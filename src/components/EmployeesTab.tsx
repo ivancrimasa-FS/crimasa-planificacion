@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
-import { usePlanner } from "../store";
+import { CalendarOff, Plus, Trash2 } from "lucide-react";
+import { todayISO, usePlanner } from "../store";
+import { ABSENCE_COLORS, ABSENCE_TYPES } from "../types";
+import type { AbsenceType } from "../types";
 import { PawnFigure } from "./Pawn";
 
 export function EmployeesTab() {
@@ -94,6 +96,8 @@ export function EmployeesTab() {
         </details>
       </div>
 
+      <AbsencesPanel />
+
       <div className="card-surface p-5">
         <table className="table">
           <thead>
@@ -156,6 +160,137 @@ export function EmployeesTab() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function AbsencesPanel() {
+  const { state, addAbsence, removeAbsence } = usePlanner();
+  const [employeeId, setEmployeeId] = useState("");
+  const [type, setType] = useState<AbsenceType>("Vacaciones");
+  const [from, setFrom] = useState(todayISO());
+  const [to, setTo] = useState(todayISO());
+  const [note, setNote] = useState("");
+  const [verPasadas, setVerPasadas] = useState(false);
+
+  const hoy = todayISO();
+  const nombre = (id: string) => state.employees.find((e) => e.id === id)?.name || "(eliminado)";
+
+  const lista = useMemo(() => {
+    return state.absences
+      .filter((a) => verPasadas || a.to >= hoy)
+      .sort((a, b) => b.from.localeCompare(a.from));
+  }, [state.absences, verPasadas, hoy]);
+
+  const guardar = () => {
+    if (!employeeId) {
+      window.alert("Elige a quién corresponde la ausencia.");
+      return;
+    }
+    addAbsence({ employeeId, type, from, to, note: note.trim() });
+    setNote("");
+  };
+
+  return (
+    <div className="card-surface p-5 stack" style={{ gap: "0.75rem" }}>
+      <div>
+        <h2 className="section-title">Ausencias</h2>
+        <p className="section-help">
+          Vacaciones, bajas, cursos o permisos. Mientras dure la ausencia, esa persona no aparece entre las
+          disponibles en "Reparto por nombre", y si ya estaba asignada se marca en naranja.
+        </p>
+      </div>
+
+      <div className="row">
+        <select className="select" style={{ width: "auto", minWidth: "12rem" }} value={employeeId} onChange={(ev) => setEmployeeId(ev.target.value)}>
+          <option value="">Elige trabajador…</option>
+          {state.employees
+            .filter((e) => e.active)
+            .map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+        </select>
+        <select className="select" style={{ width: "auto" }} value={type} onChange={(ev) => setType(ev.target.value as AbsenceType)}>
+          {ABSENCE_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <label className="row xs muted" style={{ gap: "0.35rem" }}>
+          Desde
+          <input className="input" style={{ width: "9.5rem" }} type="date" value={from} onChange={(ev) => setFrom(ev.target.value)} />
+        </label>
+        <label className="row xs muted" style={{ gap: "0.35rem" }}>
+          Hasta
+          <input className="input" style={{ width: "9.5rem" }} type="date" value={to} onChange={(ev) => setTo(ev.target.value)} />
+        </label>
+        <input
+          className="input"
+          style={{ maxWidth: "14rem" }}
+          placeholder="Nota (opcional)"
+          value={note}
+          onChange={(ev) => setNote(ev.target.value)}
+        />
+        <button className="btn btn-primary" onClick={guardar}>
+          <Plus /> Añadir ausencia
+        </button>
+      </div>
+
+      <table className="table">
+        <thead>
+          <tr>
+            <th style={{ width: "2.5rem" }} />
+            <th>Trabajador</th>
+            <th style={{ width: "8rem" }}>Tipo</th>
+            <th style={{ width: "13rem" }}>Fechas</th>
+            <th>Nota</th>
+            <th style={{ width: "3rem" }} />
+          </tr>
+        </thead>
+        <tbody>
+          {lista.map((a) => (
+            <tr key={a.id}>
+              <td className="muted">
+                <CalendarOff size={16} />
+              </td>
+              <td>{nombre(a.employeeId)}</td>
+              <td>
+                <span className="absent-tag" style={{ marginLeft: 0, background: ABSENCE_COLORS[a.type] || "var(--muted-foreground)" }}>
+                  {a.type}
+                </span>
+              </td>
+              <td className="xs nums">
+                {a.from === a.to ? a.from : a.from + " → " + a.to}
+              </td>
+              <td className="xs muted">{a.note}</td>
+              <td>
+                <button
+                  className="btn btn-icon btn-danger"
+                  title="Eliminar ausencia"
+                  onClick={() => removeAbsence(a.id)}
+                >
+                  <Trash2 />
+                </button>
+              </td>
+            </tr>
+          ))}
+          {lista.length === 0 && (
+            <tr>
+              <td colSpan={6} className="muted xs">
+                No hay ausencias {verPasadas ? "registradas" : "activas ni futuras"}.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <label className="row xs muted" style={{ gap: "0.35rem" }}>
+        <input type="checkbox" checked={verPasadas} onChange={(ev) => setVerPasadas(ev.target.checked)} />
+        Ver también las ausencias ya terminadas
+      </label>
     </div>
   );
 }

@@ -2,7 +2,8 @@ import { initializeApp } from "firebase/app";
 import type { FirebaseApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import type { Firestore } from "firebase/firestore";
-import { getAuth, signInAnonymously } from "firebase/auth";
+import { getAuth } from "firebase/auth";
+import type { Auth } from "firebase/auth";
 
 /**
  * La configuración se lee de variables de entorno (archivo .env en local,
@@ -21,29 +22,18 @@ export const firebaseReady = Boolean(config.apiKey && config.projectId);
 
 let app: FirebaseApp | null = null;
 let firestore: Firestore | null = null;
+let authInstance: Auth | null = null;
 
 if (firebaseReady) {
   app = initializeApp(config);
   firestore = getFirestore(app);
+  authInstance = getAuth(app);
 }
 
 export const db = firestore;
+export const auth = authInstance;
 
 /** Colecciones propias de esta app, separadas del resto de proyectos del mismo Firebase. */
 export const COL_CATALOGO = "plan_catalogo";
 export const DOC_CATALOGO = "global";
 export const COL_DIAS = "plan_dias";
-
-/**
- * Login anónimo. Si el proveedor "Anónimo" no está activado en Firebase, la app
- * sigue funcionando siempre que las reglas de Firestore permitan el acceso.
- */
-export async function ensureAuth(): Promise<void> {
-  if (!app) return;
-  try {
-    const auth = getAuth(app);
-    if (!auth.currentUser) await signInAnonymously(auth);
-  } catch (err) {
-    console.warn("Login anónimo no disponible, se continúa sin autenticar:", err);
-  }
-}

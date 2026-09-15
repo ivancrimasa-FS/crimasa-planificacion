@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { ArrowLeft, GripVertical, HardHat } from "lucide-react";
+import { ArrowLeft, CalendarOff, GripVertical, HardHat } from "lucide-react";
 import { usePlanner } from "../store";
+import { esFinDeSemana, nombreFestivo } from "../festivos";
 import { DateBar } from "./ui";
 
 export function PlanningTab() {
-  const { state, day, setNeed, needTotal, worksOf, moveManager, setNote } = usePlanner();
+  const { state, day, date, setNeed, needTotal, worksOf, moveManager, setNote } = usePlanner();
+  const festivo = nombreFestivo(date, state.festivosLocales);
+  const finDeSemana = esFinDeSemana(date);
   const [selected, setSelected] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
@@ -25,6 +28,18 @@ export function PlanningTab() {
             </span>
           </div>
           <DateBar />
+          {(festivo || finDeSemana) && (
+            <div className="day-notice">
+              <CalendarOff size={15} />
+              {festivo ? "Festivo: " + festivo : "Es fin de semana"}.
+            </div>
+          )}
+          {day.updatedBy && (
+            <p className="audit-line">
+              Última edición: {day.updatedBy}
+              {day.updatedAt ? " · " + new Date(day.updatedAt).toLocaleString("es-ES") : ""}
+            </p>
+          )}
           <p className="section-help">
             Escribe cuántas personas hace falta de cada categoría en cada obra. Los nombres concretos se ponen
             en “Reparto por nombre”.

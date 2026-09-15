@@ -26,6 +26,27 @@ export interface Vehicle {
   active: boolean;
 }
 
+export type AbsenceType = "Vacaciones" | "Baja" | "Curso" | "Permiso";
+
+export const ABSENCE_TYPES: AbsenceType[] = ["Vacaciones", "Baja", "Curso", "Permiso"];
+
+export const ABSENCE_COLORS: Record<string, string> = {
+  Vacaciones: "oklch(0.72 0.09 200)",
+  Baja: "oklch(0.56 0.19 25)",
+  Curso: "oklch(0.55 0.09 265)",
+  Permiso: "oklch(0.62 0.13 40)",
+};
+
+export interface Absence {
+  id: string;
+  employeeId: string;
+  /** Fechas inclusivas, formato YYYY-MM-DD */
+  from: string;
+  to: string;
+  type: AbsenceType;
+  note?: string;
+}
+
 /** Datos de un día concreto. Las claves son ids de obra. */
 export interface DayData {
   /** Nº de personas necesarias por obra y categoría: needs[workId][categoria] = n */
@@ -36,6 +57,9 @@ export interface DayData {
   vehicles: Record<string, string[]>;
   /** Nota libre por obra */
   notes?: Record<string, string>;
+  /** Auditoría: quién y cuándo tocó este día por última vez */
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface PlannerState {
@@ -45,6 +69,8 @@ export interface PlannerState {
   works: Work[];
   employees: Employee[];
   vehicles: Vehicle[];
+  absences: Absence[];
+  festivosLocales: Record<string, string>;
   days: Record<string, DayData>; // clave: YYYY-MM-DD
 }
 

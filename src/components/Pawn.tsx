@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { categoryColor } from "../types";
 import type { Employee } from "../types";
 
@@ -63,6 +63,8 @@ interface PawnProps {
   onClick?: () => void;
   onRemove?: () => void;
   title?: string;
+  /** Texto de aviso: pinta el muñeco en naranja y lo explica al pasar el ratón. */
+  warn?: string | null;
 }
 
 export function Pawn({
@@ -75,6 +77,7 @@ export function Pawn({
   onClick,
   onRemove,
   title,
+  warn,
 }: PawnProps) {
   const common = {
     draggable: true,
@@ -83,7 +86,8 @@ export function Pawn({
     onClick,
     "data-picked": picked ? "true" : "false",
     "data-dragging": dragging ? "true" : "false",
-    title: title || `${employee.name} · ${employee.category}`,
+    "data-warn": warn ? "true" : "false",
+    title: warn ? `${employee.name} · ${employee.category} — ${warn}` : title || `${employee.name} · ${employee.category}`,
   } as const;
 
   if (variant === "tile") {
@@ -93,6 +97,11 @@ export function Pawn({
           <PawnFigure name={employee.name} category={employee.category} size={42} />
         </span>
         <span className="pawn-label">{employee.name}</span>
+        {warn && (
+          <span className="pawn-warn" aria-label={warn}>
+            <AlertTriangle size={11} />
+          </span>
+        )}
         {onRemove && (
           <button
             className="pawn-remove"
@@ -116,6 +125,7 @@ export function Pawn({
         <PawnFigure name={employee.name} category={employee.category} size={30} />
       </span>
       <span className="pawn-name">{employee.name}</span>
+      {warn && <AlertTriangle size={13} className="pawn-warn-inline" />}
       {onRemove && (
         <button
           className="pawn-remove"

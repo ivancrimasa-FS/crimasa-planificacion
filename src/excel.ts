@@ -68,7 +68,7 @@ export async function exportToExcel(state: PlannerState, from: string, to: strin
   const vehRows: any[][] = [["Fecha", "Código", "Obra", "Matrícula", "Descripción"]];
   /* --- Hoja 4: resumen diario por obra --- */
   const summaryRows: any[][] = [
-    ["Fecha", "Día", "Jefe de obra", "Código", "Obra", "Previstas", "Asignadas", "Diferencia", "Nota"],
+    ["Fecha", "Día", "Jefe de obra", "Código", "Obra", "Previstas", "Asignadas", "Diferencia", "Nota", "Última edición", "Editado por"],
   ];
 
   for (const iso of dates) {
@@ -118,6 +118,8 @@ export async function exportToExcel(state: PlannerState, from: string, to: strin
           crew.length,
           crew.length - previstas,
           note,
+          d.updatedAt ? new Date(d.updatedAt).toLocaleString("es-ES") : "",
+          d.updatedBy || "",
         ]);
       }
     }
@@ -138,6 +140,13 @@ export async function exportToExcel(state: PlannerState, from: string, to: strin
   const empRows: any[][] = [["Trabajador", "Categoría", "Estado"]];
   for (const e of state.employees) empRows.push([e.name, e.category, e.active ? "Activo" : "Baja"]);
   XLSX.utils.book_append_sheet(wb, sheet(empRows), "Empleados");
+
+  const absRows: any[][] = [["Trabajador", "Tipo", "Desde", "Hasta", "Nota"]];
+  for (const a of state.absences || []) {
+    const e = state.employees.find((x) => x.id === a.employeeId);
+    absRows.push([e ? e.name : "(eliminado)", a.type, a.from, a.to, a.note || ""]);
+  }
+  XLSX.utils.book_append_sheet(wb, sheet(absRows), "Ausencias");
 
   const vhRows: any[][] = [["Matrícula", "Descripción", "Estado"]];
   for (const v of state.vehicles) vhRows.push([v.plate, v.description, v.active ? "Activo" : "Baja"]);

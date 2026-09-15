@@ -1,9 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { collection, deleteDoc, doc, getDoc, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
-import { COL_CATALOGO, COL_DIAS, DOC_CATALOGO, db, ensureAuth, firebaseReady } from "./firebase";
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  FieldPath,
+  getDoc,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
+import { COL_CATALOGO, COL_DIAS, DOC_CATALOGO, db, firebaseReady } from "./firebase";
+import { useAuth } from "./auth";
 import { CATEGORIES } from "./types";
-import type { DayData, Employee, Manager, PlannerState, Vehicle, Work } from "./types";
+import type { Absence, DayData, Employee, Manager, PlannerState, Vehicle, Work } from "./types";
 
 /* ------------------------- utilidades de fecha ------------------------- */
 
@@ -51,6 +63,9 @@ interface Catalog {
   works: Work[];
   employees: Employee[];
   vehicles: Vehicle[];
+  absences: Absence[];
+  /** Festivos locales añadidos a mano: { "2026-08-15": "Feria del pueblo" } */
+  festivosLocales: Record<string, string>;
 }
 
 const EMPTY_CATALOG: Catalog = {
@@ -59,6 +74,8 @@ const EMPTY_CATALOG: Catalog = {
   works: [],
   employees: [],
   vehicles: [],
+  absences: [],
+  festivosLocales: {},
 };
 
 const EMPLOYEE_SEED: [string, string][] = [
@@ -106,6 +123,8 @@ function seedCatalog(): Catalog {
       { id: "vh_2", plate: "5678 BNP", description: "Pick-up", active: true },
       { id: "vh_3", plate: "9012 TRD", description: "Furgoneta", active: true },
     ],
+    absences: [],
+    festivosLocales: {},
   };
 }
 
@@ -117,6 +136,9 @@ function normalizeCatalog(input: any): Catalog {
     works: Array.isArray(input.works) ? input.works.map((w: Work) => ({ ...w, active: w.active !== false })) : [],
     employees: Array.isArray(input.employees) ? input.employees.map((e: Employee) => ({ ...e, active: e.active !== false })) : [],
     vehicles: Array.isArray(input.vehicles) ? input.vehicles.map((v: Vehicle) => ({ ...v, active: v.active !== false })) : [],
+    absences: Array.isArray(input.absences) ? input.absences : [],
+    festivosLocales:
+      input.festivosLocales && typeof input.festivosLocales === "object" ? input.festivosLocales : {},
   };
 }
 
@@ -126,6 +148,8 @@ function normalizeDay(input: any): DayData {
     crew: input && typeof input.crew === "object" && input.crew ? input.crew : {},
     vehicles: input && typeof input.vehicles === "object" && input.vehicles ? input.vehicles : {},
     notes: input && typeof input.notes === "object" && input.notes ? input.notes : {},
+    updatedBy: input && typeof input.updatedBy === "string" ? input.updatedBy : undefined,
+    updatedAt: input && typeof input.updatedAt === "string" ? input.updatedAt : undefined,
   };
 }
 
@@ -168,6 +192,14 @@ interface PlannerContextValue {
   updateVehicle: (id: string, patch: Partial<Vehicle>) => void;
   removeVehicle: (id: string) => void;
 
+  addAbsence: (a: Omit<Absence, "id">) => void;
+  removeAbsence: (id: string) => void;
+  absenceOf: (employeeId: string, iso?: string) => Absence | null;
+  absencesOn: (iso: string) => Record<string, Absence>;
+
+  addFestivoLocal: (fecha: string, nombre: string) => void;
+  removeFestivoLocal: (fecha: string) => void;
+
   reset: () => void;
   replaceState: (json: string) => string | null;
   worksOf: (managerId: string) => Work[];
@@ -177,6 +209,7 @@ interface PlannerContextValue {
 const PlannerContext = createContext<PlannerContextValue | null>(null);
 
 export function PlannerProvider({ children }: { children: ReactNode }) {
+  const { email } = useAuth();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [days, setDays] = useState<Record<string, DayData>>({});
   const [date, setDate] = useState<string>(() => todayISO());
@@ -186,11 +219,9 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   /* --- suscripción en tiempo real --- */
   useEffect(() => {
     if (!firebaseReady || !db) return;
-    let cancelled = false;
-    let unsubs: (() => void)[] = [];
+    const unsubs: (() => void)[] = [];
 
-    ensureAuth().then(() => {
-      if (cancelled || !db) return;
+    {
       const catalogRef = doc(db, COL_CATALOGO, DOC_CATALOGO);
 
       // Si el catálogo todavía no existe en Firestore, se crea una sola vez.
@@ -237,10 +268,9 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           },
         ),
       );
-    });
+    }
 
     return () => {
-      cancelled = true;
       unsubs.forEach((fn) => fn());
     };
   }, []);
@@ -276,9 +306,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const saveDay = useCallback(
     (iso: string, patch: any) => {
       if (!db) return;
-      write(() => setDoc(doc(db, COL_DIAS, iso), patch, { merge: true }));
+      const conAuditoria = { ...patch, updatedBy: email || "desconocido", updatedAt: new Date().toISOString() };
+      write(() => setDoc(doc(db, COL_DIAS, iso), conAuditoria, { merge: true }));
     },
-    [write],
+    [write, email],
   );
 
   const dayOf = useCallback((iso: string): DayData => days[iso] || EMPTY_DAY, [days]);
@@ -470,6 +501,44 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           for (const entry of Object.entries(d.vehicles)) vehicles[entry[0]] = entry[1].filter((x) => x !== id);
           return { ...d, vehicles };
         });
+      },
+
+      addAbsence: (a) => {
+        if (!a.employeeId || !a.from || !a.to) return;
+        const from = a.from <= a.to ? a.from : a.to;
+        const to = a.from <= a.to ? a.to : a.from;
+        saveCatalog({ absences: cat.absences.concat([{ ...a, from, to, id: uid("ab") }]) });
+      },
+
+      removeAbsence: (id) => saveCatalog({ absences: cat.absences.filter((a) => a.id !== id) }),
+
+      absenceOf: (employeeId, isoDate) => {
+        const d = isoDate || date;
+        return cat.absences.find((a) => a.employeeId === employeeId && a.from <= d && d <= a.to) || null;
+      },
+
+      absencesOn: (isoDate) => {
+        const out: Record<string, Absence> = {};
+        for (const a of cat.absences) {
+          if (a.from <= isoDate && isoDate <= a.to) out[a.employeeId] = a;
+        }
+        return out;
+      },
+
+      addFestivoLocal: (fecha, nombre) => {
+        if (!fecha || !nombre.trim()) return;
+        saveCatalog({ festivosLocales: { ...cat.festivosLocales, [fecha]: nombre.trim() } });
+      },
+
+      removeFestivoLocal: (fecha) => {
+        if (!db) return;
+        const next = { ...cat.festivosLocales };
+        delete next[fecha];
+        setCatalog((c) => ({ ...(c || EMPTY_CATALOG), festivosLocales: next }));
+        // merge no borra claves, así que se elimina el campo explícitamente.
+        write(() =>
+          updateDoc(doc(db, COL_CATALOGO, DOC_CATALOGO), new FieldPath("festivosLocales", fecha), deleteField()),
+        );
       },
 
       reset: () => {

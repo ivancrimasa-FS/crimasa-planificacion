@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { Truck, X } from "lucide-react";
+import { AlertTriangle, CalendarOff, Truck, X } from "lucide-react";
 import { usePlanner } from "../store";
 import { DateBar } from "./ui";
 import { Pawn } from "./Pawn";
-import { CATEGORY_COLORS } from "../types";
-import type { Employee } from "../types";
+import { ABSENCE_COLORS, CATEGORY_COLORS } from "../types";
+import type { Absence, Employee } from "../types";
+import { esFinDeSemana, nombreFestivo } from "../festivos";
 
 interface DragPayload {
   employeeId: string;
@@ -20,6 +21,8 @@ export function CrewBoardTab() {
     freeEmployee,
     toggleVehicle,
     needTotal,
+    absencesOn,
+    date,
   } = usePlanner();
 
   const [search, setSearch] = useState("");
@@ -34,6 +37,26 @@ export function CrewBoardTab() {
     return map;
   }, [state.employees]);
 
+  const ausencias: Record<string, Absence> = useMemo(() => absencesOn(date), [absencesOn, date]);
+
+  /** Cuántas obras tiene asignadas cada persona ese día (para avisar de duplicados). */
+  const vecesAsignado = useMemo(() => {
+    const count: Record<string, number> = {};
+    for (const list of Object.values(day.crew)) {
+      for (const id of list) count[id] = (count[id] || 0) + 1;
+    }
+    return count;
+  }, [day.crew]);
+
+  const avisoDe = (employeeId: string): string | null => {
+    if (ausencias[employeeId]) return ausencias[employeeId].type + ": no debería estar trabajando";
+    if ((vecesAsignado[employeeId] || 0) > 1) return "Asignado a " + vecesAsignado[employeeId] + " obras este día";
+    return null;
+  };
+
+  const festivo = nombreFestivo(date, state.festivosLocales);
+  const finDeSemana = esFinDeSemana(date);
+
   const assignedIds = useMemo(() => {
     const set = new Set<string>();
     for (const list of Object.values(day.crew)) list.forEach((id) => set.add(id));
@@ -44,12 +67,17 @@ export function CrewBoardTab() {
     const q = search.trim().toLowerCase();
     return state.employees
       .filter((e) => e.active)
+      .filter((e) => !ausencias[e.id])
       .filter((e) => showAll || !assignedIds.has(e.id))
       .filter((e) => !q || e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
-  }, [state.employees, assignedIds, search, showAll]);
+  }, [state.employees, assignedIds, search, showAll, ausencias]);
 
-  const freeCount = state.employees.filter((e) => e.active && !assignedIds.has(e.id)).length;
+  const freeCount = state.employees.filter((e) => e.active && !assignedIds.has(e.id) && !ausencias[e.id]).length;
+
+  const ausentes = state.employees
+    .filter((e) => e.active && ausencias[e.id])
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
 
   const startDrag = (ev: React.DragEvent, payload: DragPayload) => {
     ev.dataTransfer.setData("text/plain", JSON.stringify(payload));
@@ -104,6 +132,18 @@ export function CrewBoardTab() {
           </p>
         </div>
         <DateBar />
+        {(festivo || finDeSemana) && (
+          <div className="day-notice">
+            <CalendarOff size={15} />
+            {festivo ? "Festivo: " + festivo : "Es fin de semana"}. Comprueba que de verdad se trabaja este día.
+          </div>
+        )}
+        {day.updatedBy && (
+          <p className="audit-line">
+            Última edición: {day.updatedBy}
+            {day.updatedAt ? " · " + new Date(day.updatedAt).toLocaleString("es-ES") : ""}
+          </p>
+        )}
         <div className="legend">
           {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
             <span key={cat}>
@@ -163,6 +203,26 @@ export function CrewBoardTab() {
                 }
               />
             ))}
+
+            {ausentes.length > 0 && (
+              <>
+                <p className="manager-group-title" style={{ marginBottom: "0.25rem" }}>
+                  No disponibles ({ausentes.length})
+                </p>
+                {ausentes.map((e) => {
+                  const a = ausencias[e.id];
+                  return (
+                    <div key={e.id} className="absent-row" title={a.note || a.type}>
+                      <AlertTriangle size={13} className="pawn-warn-inline" />
+                      <span>{e.name}</span>
+                      <span className="absent-tag" style={{ background: ABSENCE_COLORS[a.type] || "var(--muted-foreground)" }}>
+                        {a.type}
+                      </span>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </div>
         </div>
 
@@ -209,6 +269,7 @@ export function CrewBoardTab() {
                     }
                     pickedId={picked?.fromWorkId === w.id ? picked.employeeId : null}
                     onRemovePawn={(empId) => unassignEmployee(w.id, empId)}
+                    avisoDe={avisoDe}
                     onToggleVehicle={(vid) => toggleVehicle(w.id, vid)}
                   />
                 ))}
@@ -252,6 +313,7 @@ export function CrewBoardTab() {
                     }
                     pickedId={picked?.fromWorkId === w.id ? picked.employeeId : null}
                     onRemovePawn={(empId) => unassignEmployee(w.id, empId)}
+                    avisoDe={avisoDe}
                     onToggleVehicle={(vid) => toggleVehicle(w.id, vid)}
                   />
                 ))}
@@ -284,6 +346,7 @@ interface WorkBoxProps {
   pickedId: string | null;
   onRemovePawn: (employeeId: string) => void;
   onToggleVehicle: (vehicleId: string) => void;
+  avisoDe: (employeeId: string) => string | null;
 }
 
 function WorkBox(p: WorkBoxProps) {
@@ -332,6 +395,7 @@ function WorkBox(p: WorkBoxProps) {
             onDragEnd={p.onPawnDragEnd}
             onClick={() => p.onPawnClick(e.id)}
             onRemove={() => p.onRemovePawn(e.id)}
+            warn={p.avisoDe(e.id)}
           />
         ))}
       </div>

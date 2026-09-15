@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { fromISO, toISO, todayISO, usePlanner } from "../store";
+import { festivosDe } from "../festivos";
 
 const DOW = ["L", "M", "X", "J", "V", "S", "D"];
 const MONTHS = [
@@ -20,7 +21,9 @@ const MONTHS = [
 type Source = "crew" | "needs";
 
 export function YearCalendarTab() {
-  const { state, date, setDate } = usePlanner();
+  const { state, date, setDate, addFestivoLocal, removeFestivoLocal } = usePlanner();
+  const [nuevoFestivo, setNuevoFestivo] = useState("");
+  const [nombreFestivoLocal, setNombreFestivoLocal] = useState("");
   const [year, setYear] = useState<number>(() => fromISO(date).getFullYear());
   const [workId, setWorkId] = useState<string>("");
   const [source, setSource] = useState<Source>("crew");
@@ -45,6 +48,18 @@ export function YearCalendarTab() {
     }
     return out;
   }, [state.days, year, workId, source]);
+
+  const festivos = useMemo(() => {
+    return { ...festivosDe(year), ...state.festivosLocales };
+  }, [year, state.festivosLocales]);
+
+  const festivosDelAnio = useMemo(
+    () =>
+      Object.entries(festivos)
+        .filter(([iso]) => iso.startsWith(String(year)))
+        .sort((a, b) => a[0].localeCompare(b[0])),
+    [festivos, year],
+  );
 
   const max = Math.max(1, ...Object.values(totals));
   const today = todayISO();
@@ -108,14 +123,16 @@ export function YearCalendarTab() {
                 const n = totals[iso] || 0;
                 const dow = (cell.getDay() + 6) % 7;
                 const intensity = n ? 0.15 + (n / max) * 0.65 : 0;
+                const nombreF = festivos[iso];
                 return (
                   <button
                     key={iso}
                     className="day"
                     data-weekend={dow >= 5 ? "true" : "false"}
+                    data-festivo={nombreF ? "true" : "false"}
                     data-today={iso === today ? "true" : "false"}
                     data-selected={iso === date ? "true" : "false"}
-                    title={`${iso} · ${n} personas`}
+                    title={iso + " · " + n + " personas" + (nombreF ? " · " + nombreF : "")}
                     style={n ? { background: `color-mix(in oklab, var(--gold) ${Math.round(intensity * 100)}%, var(--card))` } : undefined}
                     onClick={() => setDate(iso)}
                   >
@@ -128,8 +145,71 @@ export function YearCalendarTab() {
         ))}
       </div>
       <p className="xs muted">
-        En los días con planificación se muestra el número de personas; en el resto, el número del día.
+        En los días con planificación se muestra el número de personas; en el resto, el número del día. Los
+        festivos aparecen en rojo.
       </p>
+
+      <div className="card-surface p-5 stack" style={{ gap: "0.75rem" }}>
+        <div>
+          <h2 className="section-title">Festivos</h2>
+          <p className="section-help">
+            Los nacionales y los de Andalucía se calculan solos cada año, Semana Santa incluida. Aquí añades
+            los locales de cada municipio.
+          </p>
+        </div>
+        <div className="row">
+          <input className="input" style={{ width: "10.5rem" }} type="date" value={nuevoFestivo} onChange={(ev) => setNuevoFestivo(ev.target.value)} />
+          <input
+            className="input"
+            style={{ maxWidth: "16rem" }}
+            placeholder="Nombre del festivo local"
+            value={nombreFestivoLocal}
+            onChange={(ev) => setNombreFestivoLocal(ev.target.value)}
+          />
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              if (!nuevoFestivo || !nombreFestivoLocal.trim()) {
+                window.alert("Indica la fecha y el nombre del festivo.");
+                return;
+              }
+              addFestivoLocal(nuevoFestivo, nombreFestivoLocal);
+              setNombreFestivoLocal("");
+            }}
+          >
+            Añadir festivo local
+          </button>
+        </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{ width: "9rem" }}>Fecha</th>
+              <th>Festivo</th>
+              <th style={{ width: "7rem" }}>Origen</th>
+              <th style={{ width: "3rem" }} />
+            </tr>
+          </thead>
+          <tbody>
+            {festivosDelAnio.map(([isoF, nombre]) => {
+              const esLocal = Boolean(state.festivosLocales[isoF]);
+              return (
+                <tr key={isoF}>
+                  <td className="nums xs">{isoF}</td>
+                  <td>{nombre}</td>
+                  <td className="xs muted">{esLocal ? "Local" : "Oficial"}</td>
+                  <td>
+                    {esLocal && (
+                      <button className="btn btn-icon btn-danger" title="Quitar festivo local" onClick={() => removeFestivoLocal(isoF)}>
+                        ×
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

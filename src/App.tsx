@@ -8,10 +8,12 @@ import {
   RotateCcw,
   Truck,
   Upload,
+  LogOut,
   Users,
   UsersRound,
 } from "lucide-react";
 import { PlannerProvider, addDays, todayISO, usePlanner } from "./store";
+import { AuthGate, useAuth } from "./auth";
 import { exportGrid, exportToExcel } from "./excel";
 import { PlanningTab } from "./components/PlanningTab";
 import { CrewBoardTab } from "./components/CrewBoardTab";
@@ -159,6 +161,26 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+function UserChip() {
+  const { email, logout } = useAuth();
+  return (
+    <>
+      <span className="user-chip" title={email}>
+        <span>{email}</span>
+      </span>
+      <button
+        className="btn"
+        title="Cerrar sesión"
+        onClick={() => {
+          if (window.confirm("¿Cerrar sesión?")) logout();
+        }}
+      >
+        <LogOut /> Salir
+      </button>
+    </>
+  );
+}
+
 function Header() {
   const { state, reset, replaceState } = usePlanner();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -218,6 +240,7 @@ function Header() {
           <button className="btn" onClick={() => fileRef.current?.click()}>
             <Upload /> Restaurar
           </button>
+          <UserChip />
           <input
             ref={fileRef}
             type="file"
@@ -271,8 +294,10 @@ function Shell() {
 
 export default function App() {
   return (
-    <PlannerProvider>
-      <Shell />
-    </PlannerProvider>
+    <AuthGate>
+      <PlannerProvider>
+        <Shell />
+      </PlannerProvider>
+    </AuthGate>
   );
 }
