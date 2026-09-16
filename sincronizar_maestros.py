@@ -126,9 +126,9 @@ def valor(fila: dict, *claves):
 
 def leer_jefes(wb) -> list:
     """
-    JO_CyM no trae el codigo JO-xx, asi que se asigna por el orden de las filas.
-    Si algun dia se anade una columna 'codigo', se usa esa y desaparece la
-    suposicion.
+    JO_CyM relaciona el codigo JO-xx con la persona (columnas COD y Nombre).
+    Si el libro no trajera esa columna, se recurre al orden de las filas y se
+    avisa en el log.
     """
     if HOJA_JEFES not in wb.sheetnames:
         return []
@@ -139,8 +139,13 @@ def leer_jefes(wb) -> list:
         ).strip()
         if not nombre:
             continue
-        codigo = valor(fila, "codigo") or f"JO-{i + 1:02d}"
-        salida.append({"name": nombre, "codigo": str(codigo).strip(), "dni": str(valor(fila, "dni") or "")})
+        codigo = valor(fila, "cod", "codigo", "codigo_jo")
+        if not codigo:
+            codigo = f"JO-{i + 1:02d}"
+            log(f"AVISO: {HOJA_JEFES} sin columna COD; {nombre} se asocia a {codigo} por orden de fila")
+        salida.append(
+            {"name": nombre, "codigo": str(codigo).strip().upper(), "dni": str(valor(fila, "dni") or "")}
+        )
     return salida
 
 
@@ -185,7 +190,7 @@ def leer_obras(wb, jefes_por_codigo: dict) -> list:
         code = str(valor(fila, "codigo_obra", "codigo") or "").strip()
         if not code:
             continue
-        codigo_jo = str(valor(fila, "jefe_obra") or "").strip()
+        codigo_jo = str(valor(fila, "jefe_obra") or "").strip().upper()
         salida.append(
             {
                 "code": code,

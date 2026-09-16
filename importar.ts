@@ -218,17 +218,21 @@ function leerDatosMaestros(wb: any, XLSX: any, out: Importado) {
   };
 
   // --- Jefes de obra ---
-  // La hoja JO_CyM no trae el código JO-xx, así que se asigna por el orden de
-  // las filas. Las obras que apunten a un código sin persona conocida reciben
-  // un jefe provisional con el propio código, para no quedarse huérfanas.
+  // La hoja JO_CyM relaciona el código JO-xx con la persona. Si algún libro
+  // antiguo no trajera la columna, se recurre al orden de las filas y se avisa.
   const jo = hoja("JO_CyM");
   const porCodigo: Record<string, Manager> = {};
+  let sinColumnaCodigo = false;
   jo.forEach((fila, i) => {
     const nombre = [campo(fila, "nombre"), campo(fila, "apellidos")].filter(Boolean).join(" ").trim();
     if (!nombre) return;
-    const codigo = "JO-" + String(i + 1).padStart(2, "0");
+    let codigo = String(campo(fila, "cod", "codigo", "codigo_jo") || "").trim();
+    if (!codigo) {
+      codigo = "JO-" + String(i + 1).padStart(2, "0");
+      sinColumnaCodigo = true;
+    }
     const m: Manager = { id: slug("mg", nombre), name: nombre };
-    porCodigo[codigo] = m;
+    porCodigo[codigo.toUpperCase()] = m;
     out.managers.push(m);
   });
 
@@ -238,7 +242,7 @@ function leerDatosMaestros(wb: any, XLSX: any, out: Importado) {
   for (const fila of obras) {
     const code = String(campo(fila, "codigo_obra", "codigo") || "").trim();
     if (!code) continue;
-    const codJefe = String(campo(fila, "Jefe_Obra", "jefe_obra") || "").trim();
+    const codJefe = String(campo(fila, "Jefe_Obra", "jefe_obra") || "").trim().toUpperCase();
     let manager = porCodigo[codJefe];
     if (!manager && codJefe) {
       manager = { id: slug("mg", codJefe), name: codJefe };
@@ -300,12 +304,15 @@ function leerDatosMaestros(wb: any, XLSX: any, out: Importado) {
       " vehículos",
   );
 
+  if (sinColumnaCodigo) {
+    out.avisos.push(
+      "La hoja JO_CyM no trae columna de código (COD), así que los jefes se han asociado por el orden de las filas. Revisa que sea correcto.",
+    );
+  }
   if (codigosSinJefe.size) {
     out.avisos.push(
-      "La hoja JO_CyM no trae la columna de código, así que los jefes se han asociado por el orden de las filas. " +
-        "Estos códigos no tienen persona y se han creado como jefe provisional: " +
-        Array.from(codigosSinJefe).sort().join(", ") +
-        ". Añade una columna 'codigo' a JO_CyM para que la asociación sea exacta.",
+      "Estos códigos de jefe de obra aparecen en las obras pero no están en JO_CyM, y se han creado como jefe provisional: " +
+        Array.from(codigosSinJefe).sort().join(", "),
     );
   }
 }
