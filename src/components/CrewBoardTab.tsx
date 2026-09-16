@@ -29,6 +29,7 @@ export function CrewBoardTab() {
   } = usePlanner();
 
   const [search, setSearch] = useState("");
+  const [jefeFiltro, setJefeFiltro] = useState<string>("");
   const [showAll, setShowAll] = useState(false);
   const [drag, setDrag] = useState<DragPayload | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -135,19 +136,25 @@ export function CrewBoardTab() {
     setOverId(null);
   };
 
-  const managersWithWorks = state.managers
+  const todosLosGrupos = state.managers
     .map((m) => ({ manager: m, works: state.works.filter((w) => w.managerId === m.id && w.active) }))
     .filter((g) => g.works.length > 0);
 
-  const orphanWorks = state.works.filter(
-    (w) => w.active && !state.managers.some((m) => m.id === w.managerId),
-  );
+  const managersWithWorks = jefeFiltro
+    ? todosLosGrupos.filter((g) => g.manager.id === jefeFiltro)
+    : todosLosGrupos;
+
+  const orphanWorks = jefeFiltro
+    ? []
+    : state.works.filter((w) => w.active && !state.managers.some((m) => m.id === w.managerId));
+
+  const obrasVisibles = managersWithWorks.reduce((a, g) => a + g.works.length, 0) + orphanWorks.length;
 
   return (
     <div className="stack">
       <div className="card-surface p-5 stack" style={{ gap: "0.75rem" }}>
         <div>
-          <h2 className="section-title">Reparto de personas por día</h2>
+          <h2 className="section-title">Reparto de personas</h2>
           <p className="section-help">
             Arrastra un muñeco desde la izquierda y suéltalo sobre la obra donde trabajará ese día. También
             puedes hacer clic en una persona y después en la obra. Para mover a alguien de obra, arrástralo de
@@ -155,6 +162,29 @@ export function CrewBoardTab() {
           </p>
         </div>
         <DateBar />
+
+        <div className="row">
+          <span className="xs muted">Jefe de obra:</span>
+          <div className="seg" style={{ flexWrap: "wrap" }}>
+            <button className="seg-btn" data-active={jefeFiltro === "" ? "true" : "false"} onClick={() => setJefeFiltro("")}>
+              Todos
+            </button>
+            {todosLosGrupos.map((g) => (
+              <button
+                key={g.manager.id}
+                className="seg-btn"
+                data-active={jefeFiltro === g.manager.id ? "true" : "false"}
+                onClick={() => setJefeFiltro(g.manager.id)}
+                title={g.works.length + " obras"}
+              >
+                {g.manager.name} <span className="seg-count">{g.works.length}</span>
+              </button>
+            ))}
+          </div>
+          <span className="xs muted">
+            {obrasVisibles} {obrasVisibles === 1 ? "obra" : "obras"} en pantalla
+          </span>
+        </div>
         {(festivo || finDeSemana) && (
           <div className="day-notice">
             <CalendarOff size={15} />
@@ -253,13 +283,15 @@ export function CrewBoardTab() {
         <div>
           {managersWithWorks.length === 0 && orphanWorks.length === 0 && (
             <div className="card-surface empty-state">
-              No hay obras activas. Créalas en la pestaña “Jefes y obras”.
+              {jefeFiltro
+                ? "Este jefe de obra no tiene obras activas."
+                : "No hay obras activas. Créalas en la pestaña “Jefes y obras”."}
             </div>
           )}
 
           {managersWithWorks.map(({ manager, works }) => (
             <div key={manager.id}>
-              <h3 className="manager-group-title">{manager.name}</h3>
+              {!jefeFiltro && <h3 className="manager-group-title">{manager.name}</h3>}
               <div className="works-grid">
                 {works.map((w) => (
                   <WorkBox

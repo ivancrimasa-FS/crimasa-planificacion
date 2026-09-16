@@ -1286,3 +1286,17 @@ main.wrap {
   overflow-y: auto;
   font-size: 0.75rem;
 }
+
+.seg-count {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground) 20%, transparent);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.seg-btn[data-active="true"] .seg-count {
+  background: color-mix(in oklab, var(--gold) 35%, transparent);
+}
