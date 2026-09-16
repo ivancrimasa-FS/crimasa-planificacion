@@ -23,6 +23,10 @@ En "Reparto por nombre":
 - **Soltar sobre "Personas libres"** para liberar a alguien.
 - Marcar *"Ver también los ya asignados"* si alguien tiene que estar en dos obras el mismo día.
 
+Los vehículos funcionan igual: en cuanto asignas una matrícula a una obra en un turno, desaparece de la
+lista de disponibles del resto de obras. Los ocupados siguen visibles al final del desplegable, en gris y
+sin poder elegirse, indicando en qué obra están.
+
 El contador de cada obra muestra `asignadas / previstas`: verde cuando cuadra con lo pedido en
 "Asignación diaria", rojo si te has pasado.
 
@@ -100,7 +104,12 @@ sale en la lista "No disponibles" con su motivo, y si ya estaba asignada a una o
 
 ## Primera carga desde Excel
 
-Botón **Cargar Excel** en la cabecera. Admite los dos libros:
+Botón **Cargar Excel** en la cabecera. El archivo de partida es
+`DATOS_PLANIFICACION_ANUAL.xlsx`, en `\\192.168.1.200\dpto gestión\2026\MACROS\CONEXION A DB`,
+que se refresca solo cada 120 minutos desde la base de datos. De él salen obras, personal, vehículos y
+jefes de obra, **leyendo siempre las hojas CyM** (CRIMASA y MAC juntos).
+
+Además admite los dos libros antiguos:
 
 - `PLANIFICACIÓN_ANUAL_CRIMASA.xlsx` → hoja PREVISION (jefes de obra, obras y previsión por categoría,
   agrupando ST y BAL en una sola categoría) y hoja PERSONAL.
@@ -118,8 +127,9 @@ la asignación, y se avisa en el resumen.
 
 ## Actualización diaria automática
 
-`scripts/sincronizar_maestros.py` mantiene al día **personal, vehículos y obras** leyendo el Excel de la
-carpeta compartida. No toca la planificación, solo las fichas.
+`scripts/sincronizar_maestros.py` mantiene al día **jefes de obra, personal, vehículos y obras** leyendo
+`DATOS_PLANIFICACION_ANUAL.xlsx` (hojas CyM). No toca la planificación, solo las fichas. Pensado para una
+tarea programada una vez al día.
 
 ```bash
 pip install firebase-admin openpyxl
@@ -127,12 +137,16 @@ python sincronizar_maestros.py --simular     # informa de los cambios sin escrib
 python sincronizar_maestros.py               # los aplica
 ```
 
-Ruta del Excel en `RUTA_EXCEL` o en la variable de entorno `PLAN_EXCEL`. Cómo decide qué hacer:
+Ruta del Excel en `RUTA_EXCEL` o en la variable de entorno `PLAN_EXCEL`; por defecto ya apunta a la
+carpeta de CONEXION A DB. Cómo decide qué hacer:
 
 - Ficha en el Excel que no está en Firestore → se crea.
 - Ficha en los dos → se actualizan sus datos conservando su id.
 - Ficha que ya no aparece en el Excel → se marca como baja. **Nunca se borra**, porque la planificación
   de los días pasados apunta a ese id y borrarla dejaría huecos en el histórico.
+
+Los jefes de obra son la excepción: se añaden y se actualizan, pero **no se dan de baja solos**, porque
+la lista es corta y una obra antigua puede seguir apuntando a uno que ya no está.
 
 Lleva dos frenos de seguridad: si la hoja de personal sale vacía, o si trae menos de la mitad de
 trabajadores de los que hay en Firestore, aborta sin tocar nada. Un Excel a medio guardar o una hoja

@@ -57,13 +57,25 @@ export function CrewBoardTab() {
     return null;
   };
 
+  /** Para cada vehículo+turno ya asignado, en qué obra está y cuántas veces. */
+  const vehiculosOcupados = useMemo(() => {
+    const mapa: Record<string, { obras: string[]; workIds: string[] }> = {};
+    for (const [wid, list] of Object.entries(day.vehicles || {})) {
+      const obra = state.works.find((w) => w.id === wid);
+      for (const k of list) {
+        mapa[k] = mapa[k] || { obras: [], workIds: [] };
+        mapa[k].obras.push(obra ? obra.code : "otra obra");
+        mapa[k].workIds.push(wid);
+      }
+    }
+    return mapa;
+  }, [day.vehicles, state.works]);
+
   const vehiculosDuplicados = useMemo(() => {
     const count: Record<string, number> = {};
-    for (const list of Object.values(day.vehicles || {})) {
-      for (const k of list) count[k] = (count[k] || 0) + 1;
-    }
+    for (const [k, v] of Object.entries(vehiculosOcupados)) count[k] = v.obras.length;
     return count;
-  }, [day.vehicles]);
+  }, [vehiculosOcupados]);
 
   const festivo = nombreFestivo(date, state.festivosLocales);
   const finDeSemana = esFinDeSemana(date);
@@ -287,6 +299,7 @@ export function CrewBoardTab() {
                     onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
                     onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
                     dupVehiculos={vehiculosDuplicados}
+                    ocupados={vehiculosOcupados}
                     onToggleVehicle={(vid, turno) => toggleVehicle(w.id, vid, turno)}
                   />
                 ))}
@@ -336,6 +349,7 @@ export function CrewBoardTab() {
                     onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
                     onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
                     dupVehiculos={vehiculosDuplicados}
+                    ocupados={vehiculosOcupados}
                     onToggleVehicle={(vid, turno) => toggleVehicle(w.id, vid, turno)}
                   />
                 ))}
@@ -374,6 +388,7 @@ interface WorkBoxProps {
   onTurno: (employeeId: string, turno: Turno) => void;
   onDieta: (employeeId: string, dieta: boolean) => void;
   dupVehiculos: Record<string, number>;
+  ocupados: Record<string, { obras: string[]; workIds: string[] }>;
 }
 
 function WorkBox(p: WorkBoxProps) {
@@ -487,17 +502,37 @@ function WorkBox(p: WorkBoxProps) {
           }}
         >
           <option value="">+ Vehículo…</option>
-          {(["DIA", "NOCHE"] as Turno[]).map((t) => (
-            <optgroup key={t} label={t === "DIA" ? "Día" : "Noche"}>
-              {p.allVehicles
-                .filter((v) => !p.vehicles.includes(slotKey(v.id, t)))
-                .map((v) => (
+          {(["DIA", "NOCHE"] as Turno[]).map((t) => {
+            const libres = p.allVehicles.filter((v) => !p.ocupados[slotKey(v.id, t)]);
+            return (
+              <optgroup key={t} label={t === "DIA" ? "Día · libres" : "Noche · libres"}>
+                {libres.map((v) => (
                   <option key={v.id + t} value={slotKey(v.id, t)}>
                     {v.plate} · {v.description}
                   </option>
                 ))}
-            </optgroup>
-          ))}
+                {libres.length === 0 && <option disabled>No queda ninguno libre</option>}
+              </optgroup>
+            );
+          })}
+          {(() => {
+            const ocupadosFuera = Object.entries(p.ocupados).filter(([, v]) => !v.workIds.includes(p.workId));
+            if (!ocupadosFuera.length) return null;
+            return (
+              <optgroup label="Ya asignados a otra obra">
+                {ocupadosFuera.map(([key, v]) => {
+                  const { vehicleId, turno } = parseSlot(key);
+                  const veh = p.allVehicles.find((x) => x.id === vehicleId);
+                  if (!veh) return null;
+                  return (
+                    <option key={key} value={key} disabled>
+                      {veh.plate} ({turno === "NOCHE" ? "noche" : "día"}) → {v.obras.join(", ")}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            );
+          })()}
         </select>
       </div>
     </div>
