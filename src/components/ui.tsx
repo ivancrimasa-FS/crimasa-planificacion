@@ -1,17 +1,10 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Copy } from "lucide-react";
-import { addDays, formatLong, todayISO, usePlanner } from "../store";
+import { addDays, daysOfWeek, formatLong, startOfWeek, todayISO, usePlanner, weekNumber } from "../store";
+import type { RangeMode } from "../store";
 
-export function Modal({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-}) {
+export function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === "Escape") onClose();
@@ -39,11 +32,55 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-export function DateBar({ showCopy = true }: { showCopy?: boolean }) {
-  const { date, setDate, copyPreviousDay } = usePlanner();
+const MODOS: { id: RangeMode; label: string }[] = [
+  { id: "dia", label: "Día" },
+  { id: "semana", label: "Semana" },
+  { id: "mes", label: "Mes" },
+];
+
+/**
+ * Barra de fecha con tres modos: un día suelto, la semana completa o el mes.
+ * Las flechas avanzan según el modo elegido.
+ */
+export function DateBar({ showCopy = true, showModes = true }: { showCopy?: boolean; showModes?: boolean }) {
+  const { date, setDate, copyPreviousDay, rangeMode, setRangeMode } = usePlanner();
+
+  const salto = rangeMode === "dia" ? 1 : rangeMode === "semana" ? 7 : 30;
+  const mover = (dir: number) => {
+    if (rangeMode === "mes") {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + dir);
+      setDate(d.toISOString().slice(0, 10));
+    } else {
+      setDate(addDays(date, dir * salto));
+    }
+  };
+
+  const semana = daysOfWeek(date);
+  const etiqueta =
+    rangeMode === "dia"
+      ? formatLong(date)
+      : rangeMode === "semana"
+        ? "Semana " + weekNumber(date) + " · " + formatLong(startOfWeek(date)) + " a " + formatLong(semana[6])
+        : new Date(date).toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+
   return (
     <div className="row">
-      <button className="btn btn-icon" title="Día anterior" onClick={() => setDate(addDays(date, -1))}>
+      {showModes && (
+        <div className="seg">
+          {MODOS.map((m) => (
+            <button
+              key={m.id}
+              className="seg-btn"
+              data-active={rangeMode === m.id ? "true" : "false"}
+              onClick={() => setRangeMode(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <button className="btn btn-icon" title="Anterior" onClick={() => mover(-1)}>
         <ChevronLeft />
       </button>
       <input
@@ -61,10 +98,10 @@ export function DateBar({ showCopy = true }: { showCopy?: boolean }) {
           <Copy /> Copiar día anterior
         </button>
       )}
-      <button className="btn btn-icon" title="Día siguiente" onClick={() => setDate(addDays(date, 1))}>
+      <button className="btn btn-icon" title="Siguiente" onClick={() => mover(1)}>
         <ChevronRight />
       </button>
-      <span className="xs muted">{formatLong(date)}</span>
+      <span className="xs muted">{etiqueta}</span>
     </div>
   );
 }

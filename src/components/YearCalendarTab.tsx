@@ -22,6 +22,10 @@ type Source = "crew" | "needs";
 
 export function YearCalendarTab() {
   const { state, date, setDate, addFestivoLocal, removeFestivoLocal } = usePlanner();
+  const [hover, setHover] = useState<{ iso: string; x: number; y: number } | null>(null);
+  const [consultaTipo, setConsultaTipo] = useState<"mes" | "dia">("mes");
+  const [consultaMes, setConsultaMes] = useState(0);
+  const [consultaDia, setConsultaDia] = useState(date);
   const [nuevoFestivo, setNuevoFestivo] = useState("");
   const [nombreFestivoLocal, setNombreFestivoLocal] = useState("");
   const [year, setYear] = useState<number>(() => fromISO(date).getFullYear());
@@ -60,6 +64,28 @@ export function YearCalendarTab() {
         .sort((a, b) => a[0].localeCompare(b[0])),
     [festivos, year],
   );
+
+  /** Desglose por obra de un día: [{obra, jefe, n}] */
+  const detalleDe = (isoDia: string) => {
+    const d = state.days[isoDia];
+    if (!d) return [];
+    const out: { code: string; name: string; manager: string; n: number }[] = [];
+    for (const w of state.works) {
+      if (workId && w.id !== workId) continue;
+      const n =
+        source === "crew"
+          ? (d.crew?.[w.id] || []).length
+          : Object.values(d.needs?.[w.id] || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+      if (!n) continue;
+      out.push({
+        code: w.code,
+        name: w.name,
+        manager: state.managers.find((m) => m.id === w.managerId)?.name || "Sin jefe",
+        n,
+      });
+    }
+    return out.sort((a, b) => b.n - a.n);
+  };
 
   const max = Math.max(1, ...Object.values(totals));
   const today = todayISO();
@@ -128,6 +154,13 @@ export function YearCalendarTab() {
                   <button
                     key={iso}
                     className="day"
+                    data-planificado={n ? "true" : "false"}
+                    onMouseEnter={(ev) => {
+                      if (!n) return;
+                      const r = (ev.target as HTMLElement).getBoundingClientRect();
+                      setHover({ iso, x: r.left + r.width / 2, y: r.top });
+                    }}
+                    onMouseLeave={() => setHover((h) => (h && h.iso === iso ? null : h))}
                     data-weekend={dow >= 5 ? "true" : "false"}
                     data-festivo={nombreF ? "true" : "false"}
                     data-today={iso === today ? "true" : "false"}
@@ -136,17 +169,125 @@ export function YearCalendarTab() {
                     style={n ? { background: `color-mix(in oklab, var(--gold) ${Math.round(intensity * 100)}%, var(--card))` } : undefined}
                     onClick={() => setDate(iso)}
                   >
-                    {n || cell.getDate()}
+                    {cell.getDate()}
                   </button>
                 );
               })}
             </div>
           </div>
         ))}
+
+        <div className="card-surface month consulta">
+          <h3 style={{ textTransform: "none" }}>Consultar previsión</h3>
+          <div className="seg" style={{ marginBottom: "0.5rem" }}>
+            <button className="seg-btn" data-active={consultaTipo === "mes" ? "true" : "false"} onClick={() => setConsultaTipo("mes")}>
+              Mes
+            </button>
+            <button className="seg-btn" data-active={consultaTipo === "dia" ? "true" : "false"} onClick={() => setConsultaTipo("dia")}>
+              Día
+            </button>
+          </div>
+
+          {consultaTipo === "mes" ? (
+            <select className="select" value={consultaMes} onChange={(ev) => setConsultaMes(Number(ev.target.value))}>
+              {MONTHS.map((m, i) => (
+                <option key={m} value={i}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input className="input" type="date" value={consultaDia} onChange={(ev) => setConsultaDia(ev.target.value)} />
+          )}
+
+          <div className="consulta-body">
+            {consultaTipo === "dia" ? (
+              (() => {
+                const filas = detalleDe(consultaDia);
+                const total = filas.reduce((a, f) => a + f.n, 0);
+                if (!filas.length) return <p className="xs muted">Sin previsión ese día.</p>;
+                return (
+                  <>
+                    <p className="xs">
+                      <strong className="nums">{total}</strong> personas el {consultaDia}
+                    </p>
+                    <ul className="consulta-list">
+                      {filas.map((f) => (
+                        <li key={f.code}>
+                          <span className="mono">{f.code}</span> · {f.name} — <strong>{f.n}</strong>
+                          <br />
+                          <span className="muted">{f.manager}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                );
+              })()
+            ) : (
+              (() => {
+                const prefijo = year + "-" + String(consultaMes + 1).padStart(2, "0");
+                const dias = Object.keys(totals).filter((k) => k.startsWith(prefijo) && totals[k] > 0).sort();
+                const total = dias.reduce((a, k) => a + totals[k], 0);
+                const porObra: Record<string, { name: string; n: number }> = {};
+                for (const d of dias) {
+                  for (const f of detalleDe(d)) {
+                    if (!porObra[f.code]) porObra[f.code] = { name: f.name, n: 0 };
+                    porObra[f.code].n += f.n;
+                  }
+                }
+                const filas = Object.entries(porObra).sort((a, b) => b[1].n - a[1].n);
+                if (!dias.length) return <p className="xs muted">Sin previsión ese mes.</p>;
+                return (
+                  <>
+                    <p className="xs">
+                      <strong className="nums">{total}</strong> personas-día en {dias.length} días
+                    </p>
+                    <ul className="consulta-list">
+                      {filas.map(([code, v]) => (
+                        <li key={code}>
+                          <span className="mono">{code}</span> · {v.name} — <strong>{v.n}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                );
+              })()
+            )}
+          </div>
+        </div>
       </div>
+
+      {hover &&
+        (() => {
+          const filas = detalleDe(hover.iso);
+          if (!filas.length) return null;
+          const total = filas.reduce((a, f) => a + f.n, 0);
+          return (
+            <div
+              className="cal-tooltip"
+              style={{
+                left: Math.min(Math.max(hover.x - 130, 8), window.innerWidth - 270),
+                top: Math.max(hover.y - 12 - 40 - filas.length * 26, 8),
+              }}
+            >
+              <h4>
+                {hover.iso} · {total} {total === 1 ? "persona" : "personas"}
+              </h4>
+              <ul>
+                {filas.slice(0, 6).map((f) => (
+                  <li key={f.code}>
+                    <span className="mono">{f.code}</span> {f.name} — <strong>{f.n}</strong> ({f.manager})
+                  </li>
+                ))}
+              </ul>
+              {filas.length > 6 && <p className="muted">y {filas.length - 6} obras más…</p>}
+            </div>
+          );
+        })()}
       <p className="xs muted">
-        En los días con planificación se muestra el número de personas; en el resto, el número del día. Los
-        festivos aparecen en rojo.
+El calendario siempre muestra el número del día. Los días con previsión salen resaltados en dorado, con
+        más intensidad cuanta más gente; pasa el ratón por encima para ver cuántas personas y en qué obras.
+        Los festivos aparecen en rojo.
       </p>
 
       <div className="card-surface p-5 stack" style={{ gap: "0.75rem" }}>

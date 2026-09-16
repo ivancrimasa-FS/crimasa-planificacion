@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { categoryColor } from "../types";
 import type { Employee } from "../types";
@@ -65,6 +66,10 @@ interface PawnProps {
   title?: string;
   /** Texto de aviso: pinta el muñeco en naranja y lo explica al pasar el ratón. */
   warn?: string | null;
+  /** Foto real del trabajador (dataURL). Si no hay, se dibuja el muñeco. */
+  photo?: string | null;
+  /** Controles extra bajo el nombre (turno, dieta…). */
+  footer?: ReactNode;
 }
 
 export function Pawn({
@@ -78,6 +83,8 @@ export function Pawn({
   onRemove,
   title,
   warn,
+  photo,
+  footer,
 }: PawnProps) {
   const common = {
     draggable: true,
@@ -94,9 +101,14 @@ export function Pawn({
     return (
       <div className="pawn-tile" {...common}>
         <span className="pawn-figure" style={{ borderColor: categoryColor(employee.category) }}>
-          <PawnFigure name={employee.name} category={employee.category} size={42} />
+          {photo ? (
+            <img src={photo} alt={employee.name} draggable={false} />
+          ) : (
+            <PawnFigure name={employee.name} category={employee.category} size={42} />
+          )}
         </span>
         <span className="pawn-label">{employee.name}</span>
+        {footer}
         {warn && (
           <span className="pawn-warn" aria-label={warn}>
             <AlertTriangle size={11} />
@@ -122,7 +134,11 @@ export function Pawn({
   return (
     <div className="pawn" {...common}>
       <span className="pawn-figure">
-        <PawnFigure name={employee.name} category={employee.category} size={30} />
+        {photo ? (
+          <img src={photo} alt={employee.name} draggable={false} />
+        ) : (
+          <PawnFigure name={employee.name} category={employee.category} size={30} />
+        )}
       </span>
       <span className="pawn-name">{employee.name}</span>
       {warn && <AlertTriangle size={13} className="pawn-warn-inline" />}

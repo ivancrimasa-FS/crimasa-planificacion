@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import type { FirebaseApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 import type { Firestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import type { Auth } from "firebase/auth";
@@ -26,7 +26,12 @@ let authInstance: Auth | null = null;
 
 if (firebaseReady) {
   app = initializeApp(config);
-  firestore = getFirestore(app);
+  // experimentalAutoDetectLongPolling: en redes de empresa con proxy o firewall,
+  // el canal en tiempo real de Firestore se corta y los cambios de otros usuarios
+  // no llegan hasta recargar. Con esto el SDK detecta ese caso y usa long polling.
+  firestore = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  });
   authInstance = getAuth(app);
 }
 
@@ -37,3 +42,4 @@ export const auth = authInstance;
 export const COL_CATALOGO = "plan_catalogo";
 export const DOC_CATALOGO = "global";
 export const COL_DIAS = "plan_dias";
+export const COL_FOTOS = "plan_fotos";

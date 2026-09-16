@@ -1037,3 +1037,252 @@ main.wrap {
   color: color-mix(in oklab, var(--destructive) 70%, black);
   font-weight: 600;
 }
+
+/* ---------- selector de modo (día / semana / mes) ---------- */
+
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.seg-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.25rem 0.6rem;
+  border-radius: calc(var(--radius-md) - 2px);
+  cursor: pointer;
+}
+
+.seg-btn[data-active="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px oklch(0.36 0.08 262 / 0.12);
+}
+
+/* ---------- rejilla de previsión por rango ---------- */
+
+.range-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.range-grid th,
+.range-grid td {
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  padding: 2px;
+  text-align: center;
+}
+
+.range-grid th.cat,
+.range-grid td.cat {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.range-grid thead th {
+  font-size: 0.65rem;
+  color: var(--muted-foreground);
+  font-weight: 600;
+  background: var(--muted);
+}
+
+.range-grid thead th[data-weekend="true"],
+.range-grid td[data-weekend="true"] {
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+}
+
+.range-grid thead th[data-festivo="true"] {
+  background: color-mix(in oklab, var(--destructive) 14%, var(--card));
+  color: color-mix(in oklab, var(--destructive) 70%, black);
+}
+
+.range-grid input {
+  width: 100%;
+  min-width: 2.1rem;
+  height: 1.6rem;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  border-radius: 3px;
+}
+
+.range-grid input:focus {
+  outline: 2px solid var(--gold);
+  background: var(--card);
+}
+
+.range-grid input[data-cero="true"] {
+  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+}
+
+.range-grid tr.total-row td {
+  font-weight: 600;
+  background: color-mix(in oklab, var(--gold) 12%, var(--card));
+}
+
+.range-scroll {
+  overflow-x: auto;
+}
+
+/* ---------- tooltip del calendario ---------- */
+
+.cal-tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 20rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  font-size: 0.72rem;
+  pointer-events: none;
+}
+
+.cal-tooltip h4 {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cal-tooltip ul {
+  margin: 0;
+  padding-left: 0.9rem;
+}
+
+.day[data-planificado="true"] {
+  font-weight: 600;
+  border-color: color-mix(in oklab, var(--gold) 60%, transparent);
+}
+
+/* ---------- fotos y turnos ---------- */
+
+.pawn-figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pawn-tile {
+  width: 84px;
+}
+
+.turno-row {
+  display: flex;
+  gap: 2px;
+  margin-top: 1px;
+}
+
+.mini-btn {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.mini-btn[data-on="true"] {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: var(--card);
+}
+
+.mini-btn[data-on="true"][data-kind="dieta"] {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--primary-foreground);
+}
+
+.foto-cell {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.foto-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.turno-tag {
+  font-size: 0.55rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.turno-tag[data-noche="true"] {
+  background: var(--navy);
+  color: var(--card);
+}
+
+.chip[data-dup="true"] {
+  border-color: oklch(0.7 0.16 55);
+  box-shadow: 0 0 0 2px oklch(0.7 0.16 55 / 0.3);
+}
+
+.month.consulta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.consulta-body {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  overflow-y: auto;
+  max-height: 11rem;
+}
+
+.consulta-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.consulta-list li {
+  line-height: 1.3;
+  border-left: 2px solid var(--gold);
+  padding-left: 0.4rem;
+}
+
+.import-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  background: var(--muted);
+  max-height: 16rem;
+  overflow-y: auto;
+  font-size: 0.75rem;
+}

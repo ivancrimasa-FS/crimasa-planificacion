@@ -19,6 +19,11 @@ service cloud.firestore {
       allow read, write: if autenticado();
     }
 
+    // Fotos de los trabajadores, una por persona.
+    match /plan_fotos/{trabajador} {
+      allow read, write: if autenticado();
+    }
+
     // Todo lo demás, cerrado.
     match /{document=**} {
       allow read, write: if false;

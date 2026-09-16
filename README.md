@@ -8,9 +8,9 @@ real) y se puede exportar a `.xlsx` cuando haga falta.
 
 | Pestaña | Para qué sirve |
 |---|---|
-| **Asignación diaria** | Cuántas personas hacen falta en cada obra, por categoría (números). |
+| **Asignación diaria** | Cuántas personas hacen falta en cada obra, por categoría. Se puede trabajar por **Día, Semana o Mes**: en semana y mes sale una rejilla de categorías × días editable de una vez, como en el Excel. |
 | **Reparto por nombre** | Los muñecos: arrastras a cada trabajador al cajón de su obra. |
-| **Previsión anual** | 12 meses de un vistazo con la carga de personal de cada día. |
+| **Previsión anual** | 12 meses de un vistazo; el calendario mantiene el número del día y resalta los que tienen previsión. Al pasar el ratón sale el detalle por obra. Junto a diciembre hay un panel para consultar un mes o un día concreto. |
 | **Jefes y obras** | Alta de jefes de obra y de obras (código, nombre, expediente). |
 | **Empleados** | Alta de trabajadores y categoría (la categoría da el color del muñeco). |
 | **Vehículos** | La flota; se asigna a cada obra desde "Reparto por nombre". |
@@ -49,7 +49,9 @@ Son colecciones nuevas, independientes de las de FULLSERVICE, así que puedes re
 proyecto de Firebase sin tocar nada de lo que ya funciona.
 
 Los cambios se propagan **en tiempo real**: si Laura mueve a alguien de obra, tú lo ves en tu pantalla
-sin recargar. La píldora de la cabecera indica el estado: *En línea*, *Guardando…*, *Sin conexión* o
+sin recargar. El SDK arranca con `experimentalAutoDetectLongPolling`, porque en redes de empresa con
+proxy o cortafuegos el canal en tiempo real de Firestore se corta en silencio y los cambios de los demás
+no llegan hasta pulsar F5 — que es justo lo que pasaba antes. La píldora de la cabecera indica el estado: *En línea*, *Guardando…*, *Sin conexión* o
 *Error al guardar*.
 
 Escrituras: cada cambio escribe solo la parte que toca (`merge`), así que dos personas trabajando en
@@ -67,6 +69,21 @@ obras distintas del mismo día no se pisan. Si dos tocan **la misma obra el mism
 Las reglas exigen usuario autenticado y cierran todo lo demás. Sin haber iniciado sesión, Firestore
 rechaza cualquier lectura o escritura, así que no basta con conocer la URL.
 
+## Fotos de los trabajadores
+
+En la pestaña Empleados, haz clic en el hueco de la foto de cada fila y elige la imagen. Se recorta a un
+cuadrado de 200 px y se comprime antes de guardarla, así que ocupa unos 12 KB por persona. Clic derecho
+sobre la foto para quitarla. Sin foto, se dibuja el muñeco generado a partir del nombre.
+
+Las fotos van en su propia colección (`plan_fotos`), una por trabajador, para no engordar el catálogo.
+
+## Turno y dieta
+
+Cada persona asignada a una obra tiene dos botones bajo el nombre: **DÍA/NOCHE** y **D** (dieta). Los
+vehículos se asignan también por turno: la misma matrícula puede estar de día en una obra y de noche en
+otra, como en el Excel. Si el mismo vehículo y turno acaba en dos obras el mismo día, la etiqueta se
+marca en naranja.
+
 ## Ausencias
 
 En la pestaña Empleados, panel "Ausencias": eliges persona, tipo (Vacaciones, Baja, Curso o Permiso) y
@@ -80,6 +97,46 @@ sale en la lista "No disponibles" con su motivo, y si ya estaba asignada a una o
 - **Festivo o fin de semana**: aviso en la cabecera del día. Los festivos nacionales y de Andalucía se
   calculan solos cada año, Semana Santa incluida. Los locales se añaden a mano en la pestaña
   "Previsión anual".
+
+## Primera carga desde Excel
+
+Botón **Cargar Excel** en la cabecera. Admite los dos libros:
+
+- `PLANIFICACIÓN_ANUAL_CRIMASA.xlsx` → hoja PREVISION (jefes de obra, obras y previsión por categoría,
+  agrupando ST y BAL en una sola categoría) y hoja PERSONAL.
+- `PERSONAL_CRIMASA_2026.xlsm` → hojas ACTIVAS (obras con cliente), DATOS VEHICULOS, PERSONAL y todas
+  las hojas SEMANAxx (reparto por nombre, con turno día/noche, vehículo y dieta; BAJA y VACACIONES se
+  convierten en ausencias con su rango de fechas).
+
+Primero enseña un resumen de lo leído y los avisos; no escribe nada hasta que confirmes. Dos modos:
+**Fusionar** (añade y actualiza, conserva lo que ya haya) o **Reemplazar** (borra todo y deja solo el
+Excel). Sube primero el libro anual y después el semanal, en ese orden, para que las obras existan
+cuando se lea el reparto.
+
+Si en el reparto aparece un código de obra que no está en ACTIVAS, la obra se crea sola para no perder
+la asignación, y se avisa en el resumen.
+
+## Actualización diaria automática
+
+`scripts/sincronizar_maestros.py` mantiene al día **personal, vehículos y obras** leyendo el Excel de la
+carpeta compartida. No toca la planificación, solo las fichas.
+
+```bash
+pip install firebase-admin openpyxl
+python sincronizar_maestros.py --simular     # informa de los cambios sin escribir
+python sincronizar_maestros.py               # los aplica
+```
+
+Ruta del Excel en `RUTA_EXCEL` o en la variable de entorno `PLAN_EXCEL`. Cómo decide qué hacer:
+
+- Ficha en el Excel que no está en Firestore → se crea.
+- Ficha en los dos → se actualizan sus datos conservando su id.
+- Ficha que ya no aparece en el Excel → se marca como baja. **Nunca se borra**, porque la planificación
+  de los días pasados apunta a ese id y borrarla dejaría huecos en el histórico.
+
+Lleva dos frenos de seguridad: si la hoja de personal sale vacía, o si trae menos de la mitad de
+trabajadores de los que hay en Firestore, aborta sin tocar nada. Un Excel a medio guardar o una hoja
+renombrada no puede darte de baja a la plantilla entera.
 
 ## Copia de seguridad automática
 

@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Truck,
   Upload,
+  FileUp,
   LogOut,
   Users,
   UsersRound,
@@ -22,6 +23,8 @@ import { ManagersTab } from "./components/ManagersTab";
 import { EmployeesTab } from "./components/EmployeesTab";
 import { VehiclesTab } from "./components/VehiclesTab";
 import { Field, Modal } from "./components/ui";
+import { leerExcel, CATEGORIAS_CRIMASA } from "./importar";
+import type { Importado } from "./importar";
 
 const TABS = [
   { id: "planning", label: "Asignación diaria", Icon: CalendarRange },
@@ -181,10 +184,130 @@ function UserChip() {
   );
 }
 
+function ImportDialog({ onClose }: { onClose: () => void }) {
+  const { importar } = usePlanner();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [leyendo, setLeyendo] = useState(false);
+  const [datos, setDatos] = useState<Importado | null>(null);
+  const [modo, setModo] = useState<"fusionar" | "reemplazar">("fusionar");
+  const [error, setError] = useState<string | null>(null);
+  const [hecho, setHecho] = useState<string | null>(null);
+
+  const elegir = async (file: File) => {
+    setLeyendo(true);
+    setError(null);
+    setDatos(null);
+    try {
+      setDatos(await leerExcel(file));
+    } catch (err: any) {
+      setError("No se pudo leer el archivo: " + (err?.message || String(err)));
+    } finally {
+      setLeyendo(false);
+    }
+  };
+
+  const ejecutar = async () => {
+    if (!datos) return;
+    if (
+      modo === "reemplazar" &&
+      !window.confirm("Se borrará TODA la planificación actual y se sustituirá por la del Excel. ¿Seguro?")
+    )
+      return;
+    setLeyendo(true);
+    try {
+      const msg = await importar({ ...datos, categories: CATEGORIAS_CRIMASA }, modo);
+      setHecho(msg);
+    } catch (err: any) {
+      setError("Error al importar: " + (err?.message || String(err)));
+    } finally {
+      setLeyendo(false);
+    }
+  };
+
+  return (
+    <Modal title="Cargar desde Excel" onClose={onClose}>
+      {!hecho && (
+        <>
+          <p className="xs muted">
+            Sube PLANIFICACIÓN_ANUAL_CRIMASA.xlsx o PERSONAL_CRIMASA_2026.xlsm. Primero te enseño qué he
+            leído; no se guarda nada hasta que lo confirmes.
+          </p>
+          <button className="btn" onClick={() => fileRef.current?.click()} disabled={leyendo}>
+            <FileUp /> {leyendo ? "Leyendo…" : "Elegir archivo"}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xlsm,.xls"
+            style={{ display: "none" }}
+            onChange={(ev) => {
+              const f = ev.target.files?.[0];
+              ev.target.value = "";
+              if (f) elegir(f);
+            }}
+          />
+        </>
+      )}
+
+      {error && <p className="login-error">{error}</p>}
+
+      {datos && !hecho && (
+        <>
+          <div className="import-box">
+            <p className="xs">
+              <strong>{datos.origen}</strong>
+            </p>
+            <ul className="consulta-list">
+              {datos.resumen.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+            {datos.avisos.length > 0 && (
+              <div className="day-notice" style={{ marginTop: "0.5rem", display: "block" }}>
+                {datos.avisos.map((a, i) => (
+                  <p key={i} className="xs">
+                    {a}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Field label="Cómo cargarlo">
+            <select className="select" value={modo} onChange={(ev) => setModo(ev.target.value as any)}>
+              <option value="fusionar">Fusionar: añade y actualiza, conserva lo que ya hay</option>
+              <option value="reemplazar">Reemplazar: borra todo y deja solo lo del Excel</option>
+            </select>
+          </Field>
+
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button className="btn" onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={ejecutar} disabled={leyendo}>
+              {leyendo ? "Importando…" : "Importar"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {hecho && (
+        <>
+          <p className="xs">{hecho}</p>
+          <button className="btn btn-primary" onClick={onClose}>
+            Cerrar
+          </button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function Header() {
   const { state, reset, replaceState } = usePlanner();
   const fileRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const backup = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -222,6 +345,9 @@ function Header() {
               <p className="l">{s.label}</p>
             </div>
           ))}
+          <button className="btn" onClick={() => setImporting(true)} title="Primera carga desde el Excel">
+            <FileUp /> Cargar Excel
+          </button>
           <button className="btn btn-primary" onClick={() => setExporting(true)}>
             <FileSpreadsheet /> Exportar a Excel
           </button>
@@ -257,6 +383,7 @@ function Header() {
         </div>
       </div>
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}
+      {importing && <ImportDialog onClose={() => setImporting(false)} />}
     </header>
   );
 }

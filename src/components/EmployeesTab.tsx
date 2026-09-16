@@ -1,9 +1,71 @@
-import { useMemo, useState } from "react";
-import { CalendarOff, Plus, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Camera, CalendarOff, Plus, Trash2 } from "lucide-react";
 import { todayISO, usePlanner } from "../store";
 import { ABSENCE_COLORS, ABSENCE_TYPES } from "../types";
 import type { AbsenceType } from "../types";
 import { PawnFigure } from "./Pawn";
+
+/** Recorta la foto a un cuadrado de 200px y la comprime, para no cargar la base de datos. */
+async function prepararFoto(file: File): Promise<string> {
+  const dataUrl: string = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result));
+    r.onerror = () => rej(new Error("No se pudo leer la imagen"));
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error("El archivo no es una imagen válida"));
+    i.src = dataUrl;
+  });
+  const lado = Math.min(img.width, img.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = 200;
+  canvas.height = 200;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("El navegador no permite procesar la imagen");
+  ctx.drawImage(img, (img.width - lado) / 2, (img.height - lado) / 2, lado, lado, 0, 0, 200, 200);
+  return canvas.toDataURL("image/jpeg", 0.75);
+}
+
+function FotoEmpleado({ id, nombre, categoria }: { id: string; nombre: string; categoria: string }) {
+  const { photos, setPhoto, removePhoto } = usePlanner();
+  const ref = useRef<HTMLInputElement>(null);
+  const foto = photos[id];
+
+  return (
+    <>
+      <span
+        className="foto-cell"
+        title={foto ? "Cambiar foto (clic) · Quitar (clic derecho)" : "Añadir foto"}
+        onClick={() => ref.current?.click()}
+        onContextMenu={(ev) => {
+          ev.preventDefault();
+          if (foto && window.confirm("¿Quitar la foto de " + nombre + "?")) removePhoto(id);
+        }}
+      >
+        {foto ? <img src={foto} alt={nombre} /> : <Camera size={15} className="muted" />}
+      </span>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={async (ev) => {
+          const file = ev.target.files?.[0];
+          ev.target.value = "";
+          if (!file) return;
+          try {
+            setPhoto(id, await prepararFoto(file));
+          } catch (err: any) {
+            window.alert("No se pudo usar esa imagen: " + (err?.message || err));
+          }
+        }}
+      />
+    </>
+  );
+}
 
 export function EmployeesTab() {
   const { state, addEmployee, updateEmployee, removeEmployee } = usePlanner();
@@ -37,7 +99,8 @@ export function EmployeesTab() {
         <div>
           <h2 className="section-title">Empleados</h2>
           <p className="section-help">
-            Los que estén activos aparecen como muñecos en “Reparto por nombre”. La categoría define su color.
+            Los que estén activos aparecen en “Reparto por nombre”. Haz clic en el hueco de la foto para subir
+            la del trabajador; si no hay foto se dibuja un muñeco. Clic derecho sobre la foto para quitarla.
           </p>
         </div>
         <div className="row">
@@ -102,7 +165,7 @@ export function EmployeesTab() {
         <table className="table">
           <thead>
             <tr>
-              <th style={{ width: "3rem" }} />
+              <th style={{ width: "3rem" }}>Foto</th>
               <th>Trabajador</th>
               <th style={{ width: "11rem" }}>Categoría</th>
               <th style={{ width: "7rem" }}>Estado</th>
@@ -113,7 +176,7 @@ export function EmployeesTab() {
             {list.map((e) => (
               <tr key={e.id}>
                 <td>
-                  <PawnFigure name={e.name} category={e.category} size={28} />
+                  <FotoEmpleado id={e.id} nombre={e.name} categoria={e.category} />
                 </td>
                 <td>
                   <input className="input" value={e.name} onChange={(ev) => updateEmployee(e.id, { name: ev.target.value })} />

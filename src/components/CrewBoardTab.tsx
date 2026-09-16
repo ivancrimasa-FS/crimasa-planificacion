@@ -3,8 +3,8 @@ import { AlertTriangle, CalendarOff, Truck, X } from "lucide-react";
 import { usePlanner } from "../store";
 import { DateBar } from "./ui";
 import { Pawn } from "./Pawn";
-import { ABSENCE_COLORS, CATEGORY_COLORS } from "../types";
-import type { Absence, Employee } from "../types";
+import { ABSENCE_COLORS, CATEGORY_COLORS, parseSlot, slotKey } from "../types";
+import type { Absence, Employee, Turno } from "../types";
 import { esFinDeSemana, nombreFestivo } from "../festivos";
 
 interface DragPayload {
@@ -23,6 +23,9 @@ export function CrewBoardTab() {
     needTotal,
     absencesOn,
     date,
+    setShift,
+    shiftOf,
+    photos,
   } = usePlanner();
 
   const [search, setSearch] = useState("");
@@ -53,6 +56,14 @@ export function CrewBoardTab() {
     if ((vecesAsignado[employeeId] || 0) > 1) return "Asignado a " + vecesAsignado[employeeId] + " obras este día";
     return null;
   };
+
+  const vehiculosDuplicados = useMemo(() => {
+    const count: Record<string, number> = {};
+    for (const list of Object.values(day.vehicles || {})) {
+      for (const k of list) count[k] = (count[k] || 0) + 1;
+    }
+    return count;
+  }, [day.vehicles]);
 
   const festivo = nombreFestivo(date, state.festivosLocales);
   const finDeSemana = esFinDeSemana(date);
@@ -192,6 +203,7 @@ export function CrewBoardTab() {
               <Pawn
                 key={e.id}
                 employee={e}
+                photo={photos[e.id]}
                 picked={picked?.employeeId === e.id && !picked.fromWorkId}
                 dragging={drag?.employeeId === e.id && !drag.fromWorkId}
                 onDragStart={(ev) => startDrag(ev, { employeeId: e.id, fromWorkId: null })}
@@ -270,7 +282,12 @@ export function CrewBoardTab() {
                     pickedId={picked?.fromWorkId === w.id ? picked.employeeId : null}
                     onRemovePawn={(empId) => unassignEmployee(w.id, empId)}
                     avisoDe={avisoDe}
-                    onToggleVehicle={(vid) => toggleVehicle(w.id, vid)}
+                    photos={photos}
+                    shiftOf={(empId) => shiftOf(w.id, empId)}
+                    onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
+                    onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
+                    dupVehiculos={vehiculosDuplicados}
+                    onToggleVehicle={(vid, turno) => toggleVehicle(w.id, vid, turno)}
                   />
                 ))}
               </div>
@@ -314,7 +331,12 @@ export function CrewBoardTab() {
                     pickedId={picked?.fromWorkId === w.id ? picked.employeeId : null}
                     onRemovePawn={(empId) => unassignEmployee(w.id, empId)}
                     avisoDe={avisoDe}
-                    onToggleVehicle={(vid) => toggleVehicle(w.id, vid)}
+                    photos={photos}
+                    shiftOf={(empId) => shiftOf(w.id, empId)}
+                    onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
+                    onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
+                    dupVehiculos={vehiculosDuplicados}
+                    onToggleVehicle={(vid, turno) => toggleVehicle(w.id, vid, turno)}
                   />
                 ))}
               </div>
@@ -345,8 +367,13 @@ interface WorkBoxProps {
   onPawnClick: (employeeId: string) => void;
   pickedId: string | null;
   onRemovePawn: (employeeId: string) => void;
-  onToggleVehicle: (vehicleId: string) => void;
+  onToggleVehicle: (vehicleId: string, turno?: Turno) => void;
   avisoDe: (employeeId: string) => string | null;
+  photos: Record<string, string>;
+  shiftOf: (employeeId: string) => { turno: Turno; dieta?: boolean };
+  onTurno: (employeeId: string, turno: Turno) => void;
+  onDieta: (employeeId: string, dieta: boolean) => void;
+  dupVehiculos: Record<string, number>;
 }
 
 function WorkBox(p: WorkBoxProps) {
@@ -385,34 +412,65 @@ function WorkBox(p: WorkBoxProps) {
 
       <div className="dropzone">
         {p.crew.length === 0 && <span className="dropzone-empty">Suelta aquí las personas de esta obra.</span>}
-        {p.crew.map((e) => (
-          <Pawn
-            key={e.id}
-            employee={e}
-            variant="tile"
-            picked={p.pickedId === e.id}
-            onDragStart={(ev) => p.onPawnDragStart(ev, e.id)}
-            onDragEnd={p.onPawnDragEnd}
-            onClick={() => p.onPawnClick(e.id)}
-            onRemove={() => p.onRemovePawn(e.id)}
-            warn={p.avisoDe(e.id)}
-          />
-        ))}
+        {p.crew.map((e) => {
+          const sh = p.shiftOf(e.id);
+          return (
+            <Pawn
+              key={e.id}
+              employee={e}
+              variant="tile"
+              picked={p.pickedId === e.id}
+              photo={p.photos[e.id]}
+              onDragStart={(ev) => p.onPawnDragStart(ev, e.id)}
+              onDragEnd={p.onPawnDragEnd}
+              onClick={() => p.onPawnClick(e.id)}
+              onRemove={() => p.onRemovePawn(e.id)}
+              warn={p.avisoDe(e.id)}
+              footer={
+                <span className="turno-row" onClick={(ev) => ev.stopPropagation()}>
+                  <button
+                    className="mini-btn"
+                    data-on={sh.turno === "NOCHE" ? "true" : "false"}
+                    title={sh.turno === "NOCHE" ? "Turno de noche" : "Turno de día"}
+                    onClick={() => p.onTurno(e.id, sh.turno === "NOCHE" ? "DIA" : "NOCHE")}
+                  >
+                    {sh.turno === "NOCHE" ? "NOCHE" : "DÍA"}
+                  </button>
+                  <button
+                    className="mini-btn"
+                    data-kind="dieta"
+                    data-on={sh.dieta ? "true" : "false"}
+                    title={sh.dieta ? "Con dieta" : "Sin dieta"}
+                    onClick={() => p.onDieta(e.id, !sh.dieta)}
+                  >
+                    D
+                  </button>
+                </span>
+              }
+            />
+          );
+        })}
       </div>
 
       <div className="row" onClick={(ev) => ev.stopPropagation()}>
-        {p.vehicles.map((vid) => {
-          const v = p.allVehicles.find((x) => x.id === vid);
+        {p.vehicles.map((key) => {
+          const { vehicleId, turno } = parseSlot(key);
+          const v = p.allVehicles.find((x) => x.id === vehicleId);
           if (!v) return null;
+          const dup = (p.dupVehiculos[key] || 0) > 1;
           return (
-            <span key={vid} className="chip">
+            <span
+              key={key}
+              className="chip"
+              data-dup={dup ? "true" : "false"}
+              title={dup ? "Este vehículo está en otra obra el mismo turno" : v.description}
+            >
               <Truck size={14} />
               <span className="mono">{v.plate}</span>
-              <button
-                className="pawn-remove"
-                aria-label={`Quitar ${v.plate}`}
-                onClick={() => p.onToggleVehicle(vid)}
-              >
+              <span className="turno-tag" data-noche={turno === "NOCHE" ? "true" : "false"}>
+                {turno === "NOCHE" ? "NOCHE" : "DÍA"}
+              </span>
+              <button className="pawn-remove" aria-label={"Quitar " + v.plate} onClick={() => p.onToggleVehicle(vehicleId, turno)}>
                 <X size={12} />
               </button>
             </span>
@@ -420,20 +478,26 @@ function WorkBox(p: WorkBoxProps) {
         })}
         <select
           className="select"
-          style={{ width: "auto", minWidth: "9rem" }}
+          style={{ width: "auto", minWidth: "10.5rem" }}
           value=""
           onChange={(ev) => {
-            if (ev.target.value) p.onToggleVehicle(ev.target.value);
+            if (!ev.target.value) return;
+            const { vehicleId, turno } = parseSlot(ev.target.value);
+            p.onToggleVehicle(vehicleId, turno);
           }}
         >
           <option value="">+ Vehículo…</option>
-          {p.allVehicles
-            .filter((v) => !p.vehicles.includes(v.id))
-            .map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.plate} · {v.description}
-              </option>
-            ))}
+          {(["DIA", "NOCHE"] as Turno[]).map((t) => (
+            <optgroup key={t} label={t === "DIA" ? "Día" : "Noche"}>
+              {p.allVehicles
+                .filter((v) => !p.vehicles.includes(slotKey(v.id, t)))
+                .map((v) => (
+                  <option key={v.id + t} value={slotKey(v.id, t)}>
+                    {v.plate} · {v.description}
+                  </option>
+                ))}
+            </optgroup>
+          ))}
         </select>
       </div>
     </div>

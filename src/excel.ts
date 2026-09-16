@@ -1,4 +1,5 @@
 import { addDays, fromISO } from "./store";
+import { parseSlot } from "./types";
 import type { PlannerState } from "./types";
 
 let XLSX_MOD: any = null;
@@ -58,14 +59,14 @@ export async function exportToExcel(state: PlannerState, from: string, to: strin
 
   /* --- Hoja 1: reparto por nombre --- */
   const crewRows: any[][] = [
-    ["Fecha", "Día", "Jefe de obra", "Código", "Obra", "Expediente", "Trabajador", "Categoría"],
+    ["Fecha", "Día", "Jefe de obra", "Código", "Obra", "Expediente", "Trabajador", "Categoría", "Turno", "Dieta"],
   ];
   /* --- Hoja 2: asignación diaria (números por categoría) --- */
   const needRows: any[][] = [
     ["Fecha", "Día", "Jefe de obra", "Código", "Obra", "Categoría", "Personas"],
   ];
   /* --- Hoja 3: vehículos --- */
-  const vehRows: any[][] = [["Fecha", "Código", "Obra", "Matrícula", "Descripción"]];
+  const vehRows: any[][] = [["Fecha", "Código", "Obra", "Matrícula", "Turno", "Descripción"]];
   /* --- Hoja 4: resumen diario por obra --- */
   const summaryRows: any[][] = [
     ["Fecha", "Día", "Jefe de obra", "Código", "Obra", "Previstas", "Asignadas", "Diferencia", "Nota", "Última edición", "Editado por"],
@@ -85,6 +86,7 @@ export async function exportToExcel(state: PlannerState, from: string, to: strin
 
       for (const empId of crew) {
         const e = employeeById(empId);
+        const sh = (d.shifts?.[work.id] || {})[empId] || { turno: "DIA", dieta: false };
         crewRows.push([
           iso,
           dayName,
@@ -94,6 +96,8 @@ export async function exportToExcel(state: PlannerState, from: string, to: strin
           work.expediente,
           e?.name || "(eliminado)",
           e?.category || "",
+          sh.turno === "NOCHE" ? "NOCHE" : "DÍA",
+          sh.dieta ? "SÍ" : "",
         ]);
       }
 
@@ -102,9 +106,17 @@ export async function exportToExcel(state: PlannerState, from: string, to: strin
         needRows.push([iso, dayName, managerName(work.managerId), work.code, work.name, cat, n]);
       }
 
-      for (const vid of vehs) {
-        const v = vehicleById(vid);
-        vehRows.push([iso, work.code, work.name, v?.plate || "(eliminado)", v?.description || ""]);
+      for (const key of vehs) {
+        const { vehicleId, turno } = parseSlot(key);
+        const v = vehicleById(vehicleId);
+        vehRows.push([
+          iso,
+          work.code,
+          work.name,
+          v?.plate || "(eliminado)",
+          turno === "NOCHE" ? "NOCHE" : "DÍA",
+          v?.description || "",
+        ]);
       }
 
       if (previstas || crew.length || note) {

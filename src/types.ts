@@ -5,9 +5,11 @@ export interface Manager {
 
 export interface Work {
   id: string;
-  code: string; // OB-1042
+  code: string; // AEN_26_134
   name: string;
-  expediente: string; // EXP/2026/0142
+  expediente: string; // SVQ-31/2026
+  /** Cliente o empresa: AENA, LIDL, DIA, Sampol… */
+  client?: string;
   managerId: string;
   active: boolean;
 }
@@ -47,14 +49,41 @@ export interface Absence {
   note?: string;
 }
 
+export type Turno = "DIA" | "NOCHE";
+
+export const TURNOS: Turno[] = ["DIA", "NOCHE"];
+
+/** Detalle de una persona asignada a una obra un día: turno y dieta. */
+export interface Shift {
+  turno: Turno;
+  dieta?: boolean;
+}
+
+/** Un vehículo se asigna por turno: la misma matrícula puede ir de día y de noche. */
+export interface VehicleSlot {
+  vehicleId: string;
+  turno: Turno;
+}
+
+export function slotKey(vehicleId: string, turno: Turno): string {
+  return vehicleId + "::" + turno;
+}
+
+export function parseSlot(key: string): VehicleSlot {
+  const [vehicleId, turno] = key.split("::");
+  return { vehicleId, turno: (turno === "NOCHE" ? "NOCHE" : "DIA") as Turno };
+}
+
 /** Datos de un día concreto. Las claves son ids de obra. */
 export interface DayData {
   /** Nº de personas necesarias por obra y categoría: needs[workId][categoria] = n */
   needs: Record<string, Record<string, number>>;
   /** Personas asignadas por nombre: crew[workId] = [employeeId, ...] */
   crew: Record<string, string[]>;
-  /** Vehículos asignados: vehicles[workId] = [vehicleId, ...] */
+  /** Vehículos asignados: vehicles[workId] = ["vh_1::DIA", ...] */
   vehicles: Record<string, string[]>;
+  /** Turno y dieta por persona y obra: shifts[workId][employeeId] */
+  shifts?: Record<string, Record<string, Shift>>;
   /** Nota libre por obra */
   notes?: Record<string, string>;
   /** Auditoría: quién y cuándo tocó este día por última vez */
@@ -74,15 +103,15 @@ export interface PlannerState {
   days: Record<string, DayData>; // clave: YYYY-MM-DD
 }
 
-export const CATEGORIES = ["Encargado", "Oficial 1ª", "Oficial 2ª", "Ayudante", "Peón"];
+export const CATEGORIES = ["Encargado", "Oficial de 1ª", "Oficial de 2ª", "Oficial de 3ª", "Subcontrata"];
 
 /** Color por categoría para los muñecos. */
 export const CATEGORY_COLORS: Record<string, string> = {
   Encargado: "oklch(0.62 0.13 40)",
-  "Oficial 1ª": "oklch(0.7 0.11 82)",
-  "Oficial 2ª": "oklch(0.62 0.11 235)",
-  Ayudante: "oklch(0.72 0.09 200)",
-  Peón: "oklch(0.55 0.09 265)",
+  "Oficial de 1ª": "oklch(0.7 0.11 82)",
+  "Oficial de 2ª": "oklch(0.62 0.11 235)",
+  "Oficial de 3ª": "oklch(0.72 0.09 200)",
+  Subcontrata: "oklch(0.55 0.09 265)",
 };
 
 export const FALLBACK_COLOR = "oklch(0.53 0.03 250)";
