@@ -425,6 +425,17 @@ interface WorkBoxProps {
 
 function WorkBox(p: WorkBoxProps) {
   const asignadas = p.crew.length;
+
+  /**
+   * Turnos que realmente se trabajan en esta obra hoy. Si solo hay gente de
+   * día, no tiene sentido ofrecer furgonetas de noche, y al revés. Sin nadie
+   * asignado todavía se ofrecen los dos.
+   */
+  const turnosEnObra = (() => {
+    const s = new Set<Turno>();
+    for (const e of p.crew) s.add(p.shiftOf(e.id).turno);
+    return s.size ? Array.from(s) : (["DIA", "NOCHE"] as Turno[]);
+  })();
   const full = p.previstas > 0 && asignadas === p.previstas;
   const over = p.previstas > 0 && asignadas > p.previstas;
 
@@ -533,8 +544,12 @@ function WorkBox(p: WorkBoxProps) {
             p.onToggleVehicle(vehicleId, turno);
           }}
         >
-          <option value="">+ Vehículo…</option>
-          {(["DIA", "NOCHE"] as Turno[]).map((t) => {
+          <option value="">
+            {turnosEnObra.length === 1
+              ? "+ Vehículo de " + (turnosEnObra[0] === "NOCHE" ? "noche…" : "día…")
+              : "+ Vehículo…"}
+          </option>
+          {turnosEnObra.map((t) => {
             const libres = p.allVehicles.filter((v) => !p.ocupados[slotKey(v.id, t)]);
             return (
               <optgroup key={t} label={t === "DIA" ? "Día · libres" : "Noche · libres"}>

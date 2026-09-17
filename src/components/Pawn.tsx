@@ -13,6 +13,17 @@ function hash(str: string): number {
   return h;
 }
 
+/** Abreviatura corta de la categoría, para que quepa bajo el muñeco. */
+export function abreviaturaCategoria(cat: string): string {
+  const c = (cat || "").toLowerCase();
+  if (c.startsWith("encargado")) return "ENC";
+  if (c.includes("1")) return "OF.1ª";
+  if (c.includes("2")) return "OF.2ª";
+  if (c.includes("3")) return "OF.3ª";
+  if (c.includes("subcontrata")) return "SUBC";
+  return (cat || "?").slice(0, 5).toUpperCase();
+}
+
 export function PawnFigure({ name, category, size = 30 }: { name: string; category: string; size?: number }) {
   const h = hash(name);
   const skin = SKINS[h % SKINS.length];
@@ -108,6 +119,9 @@ export function Pawn({
           )}
         </span>
         <span className="pawn-label">{employee.name}</span>
+        <span className="cat-tag" style={{ background: categoryColor(employee.category) }} title={employee.category}>
+          {abreviaturaCategoria(employee.category)}
+        </span>
         {footer}
         {warn && (
           <span className="pawn-warn" aria-label={warn}>
@@ -132,7 +146,7 @@ export function Pawn({
   }
 
   return (
-    <div className="pawn" {...common}>
+    <div className="pawn" style={{ borderLeft: "4px solid " + categoryColor(employee.category) }} {...common}>
       <span className="pawn-figure">
         {photo ? (
           <img src={photo} alt={employee.name} draggable={false} />
@@ -141,6 +155,9 @@ export function Pawn({
         )}
       </span>
       <span className="pawn-name">{employee.name}</span>
+      <span className="cat-tag" style={{ background: categoryColor(employee.category) }} title={employee.category}>
+        {abreviaturaCategoria(employee.category)}
+      </span>
       {warn && <AlertTriangle size={13} className="pawn-warn-inline" />}
       {onRemove && (
         <button
