@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarOff, Truck, X } from "lucide-react";
-import { usePlanner } from "../store";
+import { formatLong, startOfWeek, usePlanner, weekNumber, daysOfWeek } from "../store";
 import { DateBar } from "./ui";
 import { Pawn } from "./Pawn";
 import { ABSENCE_COLORS, CATEGORY_COLORS, parseSlot, slotKey } from "../types";
@@ -26,6 +26,7 @@ export function CrewBoardTab() {
     setShift,
     photos,
     rangeMode,
+    setRangeMode,
     diasDestino,
     dayOf,
     incluirFinde,
@@ -34,6 +35,11 @@ export function CrewBoardTab() {
 
   const [search, setSearch] = useState("");
   const [jefeFiltro, setJefeFiltro] = useState<string>("");
+
+  // Aquí el reparto es por día o por semana; el mes no tiene sentido.
+  useEffect(() => {
+    if (rangeMode === "mes") setRangeMode("semana");
+  }, [rangeMode, setRangeMode]);
   const [showAll, setShowAll] = useState(false);
   const [drag, setDrag] = useState<DragPayload | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -204,22 +210,29 @@ export function CrewBoardTab() {
             cajón a otro.
           </p>
         </div>
-        <DateBar />
+        <DateBar modes={["dia", "semana"]} />
 
-        {enRango && (
-          <div className="day-notice">
-            <CalendarOff size={15} />
+        <div className="modo-banner" data-modo={enRango ? "semana" : "dia"}>
+          <CalendarOff size={16} />
+          {enRango ? (
+            <>
+              <span>
+                Repartiendo <strong>TODA LA SEMANA {weekNumber(date)}</strong> · {formatLong(startOfWeek(date))} a{" "}
+                {formatLong(daysOfWeek(date)[6])} · lo que asignes se aplica a los{" "}
+                <strong>{diasDestino.length} días</strong> del rango.
+              </span>
+              <label className="row xs" style={{ gap: "0.3rem", marginLeft: "auto", flexWrap: "nowrap" }}>
+                <input type="checkbox" checked={incluirFinde} onChange={(ev) => setIncluirFinde(ev.target.checked)} />
+                Incluir findes y festivos
+              </label>
+            </>
+          ) : (
             <span>
-              Estás repartiendo <strong>{rangeMode === "semana" ? "toda la semana" : "todo el mes"}</strong>:
-              lo que asignes se aplica a los {diasDestino.length} días laborables del rango. Para cambiar un
-              día suelto, pon el selector en <strong>Día</strong>.
+              Repartiendo <strong>UN SOLO DÍA</strong> · {formatLong(date)} · los cambios afectan solo a esta
+              fecha. Pon el selector en <strong>Semana</strong> para repartir la semana entera.
             </span>
-            <label className="row xs" style={{ gap: "0.3rem", marginLeft: "auto", flexWrap: "nowrap" }}>
-              <input type="checkbox" checked={incluirFinde} onChange={(ev) => setIncluirFinde(ev.target.checked)} />
-              Incluir findes y festivos
-            </label>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="row">
           <span className="xs muted">Jefe de obra:</span>

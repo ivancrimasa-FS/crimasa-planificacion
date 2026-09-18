@@ -42,7 +42,16 @@ const MODOS: { id: RangeMode; label: string }[] = [
  * Barra de fecha con tres modos: un día suelto, la semana completa o el mes.
  * Las flechas avanzan según el modo elegido.
  */
-export function DateBar({ showCopy = true, showModes = true }: { showCopy?: boolean; showModes?: boolean }) {
+export function DateBar({
+  showCopy = true,
+  showModes = true,
+  modes,
+}: {
+  showCopy?: boolean;
+  showModes?: boolean;
+  /** Modos que se ofrecen. Por defecto los tres; el reparto solo usa día y semana. */
+  modes?: RangeMode[];
+}) {
   const { date, setDate, copyPreviousDay, rangeMode, setRangeMode } = usePlanner();
 
   const salto = rangeMode === "dia" ? 1 : rangeMode === "semana" ? 7 : 30;
@@ -68,7 +77,7 @@ export function DateBar({ showCopy = true, showModes = true }: { showCopy?: bool
     <div className="row">
       {showModes && (
         <div className="seg">
-          {MODOS.map((m) => (
+          {MODOS.filter((m) => !modes || modes.includes(m.id)).map((m) => (
             <button
               key={m.id}
               className="seg-btn"
