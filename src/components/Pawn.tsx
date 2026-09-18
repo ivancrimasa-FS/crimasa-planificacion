@@ -81,6 +81,10 @@ interface PawnProps {
   photo?: string | null;
   /** Controles extra bajo el nombre (turno, dieta…). */
   footer?: ReactNode;
+  /** Texto pequeño bajo el nombre, por ejemplo "3/5 días". */
+  nota?: string | null;
+  /** Resalta la nota cuando la asignación no cubre todo el rango. */
+  notaParcial?: boolean;
 }
 
 export function Pawn({
@@ -96,6 +100,8 @@ export function Pawn({
   warn,
   photo,
   footer,
+  nota,
+  notaParcial,
 }: PawnProps) {
   const common = {
     draggable: true,
@@ -122,6 +128,11 @@ export function Pawn({
         <span className="cat-tag" style={{ background: categoryColor(employee.category) }} title={employee.category}>
           {abreviaturaCategoria(employee.category)}
         </span>
+        {nota && (
+          <span className="dias-tag" data-parcial={notaParcial ? "true" : "false"}>
+            {nota}
+          </span>
+        )}
         {footer}
         {warn && (
           <span className="pawn-warn" aria-label={warn}>

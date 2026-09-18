@@ -24,8 +24,12 @@ export function CrewBoardTab() {
     absencesOn,
     date,
     setShift,
-    shiftOf,
     photos,
+    rangeMode,
+    diasDestino,
+    dayOf,
+    incluirFinde,
+    setIncluirFinde,
   } = usePlanner();
 
   const [search, setSearch] = useState("");
@@ -41,16 +45,55 @@ export function CrewBoardTab() {
     return map;
   }, [state.employees]);
 
+  const enRango = rangeMode !== "dia";
+
+  /**
+   * Lo que se pinta. En modo día es el día tal cual; en semana o mes, la unión
+   * de todos los días laborables: quien esté al menos un día aparece en la obra.
+   */
+  const vista = useMemo(() => {
+    if (!enRango) return day;
+    const crew: Record<string, string[]> = {};
+    const vehicles: Record<string, string[]> = {};
+    for (const iso of diasDestino) {
+      const d = dayOf(iso);
+      for (const [w, lista] of Object.entries(d.crew || {})) {
+        crew[w] = crew[w] || [];
+        for (const id of lista) if (!crew[w].includes(id)) crew[w].push(id);
+      }
+      for (const [w, lista] of Object.entries(d.vehicles || {})) {
+        vehicles[w] = vehicles[w] || [];
+        for (const k of lista) if (!vehicles[w].includes(k)) vehicles[w].push(k);
+      }
+    }
+    return { ...day, crew, vehicles };
+  }, [enRango, day, diasDestino, dayOf]);
+
+  /** En cuántos días del rango está esa persona en esa obra. */
+  const diasEn = (workId: string, employeeId: string) =>
+    diasDestino.filter((iso) => (dayOf(iso).crew[workId] || []).includes(employeeId)).length;
+
+  /** Turno y dieta: se toman del primer día del rango en que la persona está en la obra. */
+  const shiftEnRango = (workId: string, employeeId: string) => {
+    for (const iso of diasDestino) {
+      const d = dayOf(iso);
+      if ((d.crew[workId] || []).includes(employeeId)) {
+        return ((d.shifts || {})[workId] || {})[employeeId] || { turno: "DIA" as Turno, dieta: false };
+      }
+    }
+    return { turno: "DIA" as Turno, dieta: false };
+  };
+
   const ausencias: Record<string, Absence> = useMemo(() => absencesOn(date), [absencesOn, date]);
 
   /** Cuántas obras tiene asignadas cada persona ese día (para avisar de duplicados). */
   const vecesAsignado = useMemo(() => {
     const count: Record<string, number> = {};
-    for (const list of Object.values(day.crew)) {
+    for (const list of Object.values(vista.crew)) {
       for (const id of list) count[id] = (count[id] || 0) + 1;
     }
     return count;
-  }, [day.crew]);
+  }, [vista.crew]);
 
   const avisoDe = (employeeId: string): string | null => {
     if (ausencias[employeeId]) return ausencias[employeeId].type + ": no debería estar trabajando";
@@ -61,7 +104,7 @@ export function CrewBoardTab() {
   /** Para cada vehículo+turno ya asignado, en qué obra está y cuántas veces. */
   const vehiculosOcupados = useMemo(() => {
     const mapa: Record<string, { obras: string[]; workIds: string[] }> = {};
-    for (const [wid, list] of Object.entries(day.vehicles || {})) {
+    for (const [wid, list] of Object.entries(vista.vehicles || {})) {
       const obra = state.works.find((w) => w.id === wid);
       for (const k of list) {
         mapa[k] = mapa[k] || { obras: [], workIds: [] };
@@ -70,7 +113,7 @@ export function CrewBoardTab() {
       }
     }
     return mapa;
-  }, [day.vehicles, state.works]);
+  }, [vista.vehicles, state.works]);
 
   const vehiculosDuplicados = useMemo(() => {
     const count: Record<string, number> = {};
@@ -83,9 +126,9 @@ export function CrewBoardTab() {
 
   const assignedIds = useMemo(() => {
     const set = new Set<string>();
-    for (const list of Object.values(day.crew)) list.forEach((id) => set.add(id));
+    for (const list of Object.values(vista.crew)) list.forEach((id) => set.add(id));
     return set;
-  }, [day.crew]);
+  }, [vista.crew]);
 
   const pool = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -156,12 +199,27 @@ export function CrewBoardTab() {
         <div>
           <h2 className="section-title">Reparto de personas</h2>
           <p className="section-help">
-            Arrastra un muñeco desde la izquierda y suéltalo sobre la obra donde trabajará ese día. También
-            puedes hacer clic en una persona y después en la obra. Para mover a alguien de obra, arrástralo de
-            un cajón a otro.
+            Arrastra un muñeco desde la izquierda y suéltalo sobre la obra donde trabajará. También puedes
+            hacer clic en una persona y después en la obra. Para mover a alguien de obra, arrástralo de un
+            cajón a otro.
           </p>
         </div>
         <DateBar />
+
+        {enRango && (
+          <div className="day-notice">
+            <CalendarOff size={15} />
+            <span>
+              Estás repartiendo <strong>{rangeMode === "semana" ? "toda la semana" : "todo el mes"}</strong>:
+              lo que asignes se aplica a los {diasDestino.length} días laborables del rango. Para cambiar un
+              día suelto, pon el selector en <strong>Día</strong>.
+            </span>
+            <label className="row xs" style={{ gap: "0.3rem", marginLeft: "auto", flexWrap: "nowrap" }}>
+              <input type="checkbox" checked={incluirFinde} onChange={(ev) => setIncluirFinde(ev.target.checked)} />
+              Incluir findes y festivos
+            </label>
+          </div>
+        )}
 
         <div className="row">
           <span className="xs muted">Jefe de obra:</span>
@@ -300,9 +358,9 @@ export function CrewBoardTab() {
                     code={w.code}
                     name={w.name}
                     expediente={w.expediente}
-                    crew={(day.crew[w.id] || []).map((id) => employeeById[id]).filter(Boolean)}
+                    crew={(vista.crew[w.id] || []).map((id) => employeeById[id]).filter(Boolean)}
                     previstas={needTotal(w.id)}
-                    vehicles={day.vehicles[w.id] || []}
+                    vehicles={vista.vehicles[w.id] || []}
                     allVehicles={state.vehicles.filter((v) => v.active)}
                     over={overId === w.id}
                     onOver={() => setOverId(w.id)}
@@ -327,7 +385,9 @@ export function CrewBoardTab() {
                     onRemovePawn={(empId) => unassignEmployee(w.id, empId)}
                     avisoDe={avisoDe}
                     photos={photos}
-                    shiftOf={(empId) => shiftOf(w.id, empId)}
+                    shiftOf={(empId) => shiftEnRango(w.id, empId)}
+                    diasEn={(empId) => diasEn(w.id, empId)}
+                    totalDias={diasDestino.length}
                     onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
                     onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
                     dupVehiculos={vehiculosDuplicados}
@@ -350,9 +410,9 @@ export function CrewBoardTab() {
                     code={w.code}
                     name={w.name}
                     expediente={w.expediente}
-                    crew={(day.crew[w.id] || []).map((id) => employeeById[id]).filter(Boolean)}
+                    crew={(vista.crew[w.id] || []).map((id) => employeeById[id]).filter(Boolean)}
                     previstas={needTotal(w.id)}
-                    vehicles={day.vehicles[w.id] || []}
+                    vehicles={vista.vehicles[w.id] || []}
                     allVehicles={state.vehicles.filter((v) => v.active)}
                     over={overId === w.id}
                     onOver={() => setOverId(w.id)}
@@ -377,7 +437,9 @@ export function CrewBoardTab() {
                     onRemovePawn={(empId) => unassignEmployee(w.id, empId)}
                     avisoDe={avisoDe}
                     photos={photos}
-                    shiftOf={(empId) => shiftOf(w.id, empId)}
+                    shiftOf={(empId) => shiftEnRango(w.id, empId)}
+                    diasEn={(empId) => diasEn(w.id, empId)}
+                    totalDias={diasDestino.length}
                     onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
                     onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
                     dupVehiculos={vehiculosDuplicados}
@@ -417,6 +479,8 @@ interface WorkBoxProps {
   avisoDe: (employeeId: string) => string | null;
   photos: Record<string, string>;
   shiftOf: (employeeId: string) => { turno: Turno; dieta?: boolean };
+  diasEn: (employeeId: string) => number;
+  totalDias: number;
   onTurno: (employeeId: string, turno: Turno) => void;
   onDieta: (employeeId: string, dieta: boolean) => void;
   dupVehiculos: Record<string, number>;
@@ -484,6 +548,8 @@ function WorkBox(p: WorkBoxProps) {
               onClick={() => p.onPawnClick(e.id)}
               onRemove={() => p.onRemovePawn(e.id)}
               warn={p.avisoDe(e.id)}
+              nota={p.totalDias > 1 ? p.diasEn(e.id) + "/" + p.totalDias + " días" : null}
+              notaParcial={p.totalDias > 1 && p.diasEn(e.id) < p.totalDias}
               footer={
                 <span className="turno-row" onClick={(ev) => ev.stopPropagation()}>
                   <button
