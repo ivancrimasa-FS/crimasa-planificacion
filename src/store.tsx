@@ -15,6 +15,7 @@ import {
 import { COL_CATALOGO, COL_DIAS, COL_FOTOS, DOC_CATALOGO, db, firebaseReady } from "./firebase";
 import { useAuth } from "./auth";
 import { CATEGORIES } from "./types";
+import { esFinDeSemana, nombreFestivo } from "./festivos";
 import { slotKey } from "./types";
 import type { Absence, DayData, Employee, Manager, PlannerState, Shift, Turno, Vehicle, Work } from "./types";
 
@@ -207,6 +208,10 @@ interface PlannerContextValue {
   rangeMode: RangeMode;
   setRangeMode: (m: RangeMode) => void;
   rangeDays: string[];
+  /** Días sobre los que escriben las asignaciones: el día suelto, o toda la semana/mes laborable. */
+  diasDestino: string[];
+  incluirFinde: boolean;
+  setIncluirFinde: (v: boolean) => void;
   day: DayData;
   dayOf: (iso: string) => DayData;
 
@@ -264,6 +269,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const [days, setDays] = useState<Record<string, DayData>>({});
   const [date, setDate] = useState<string>(() => todayISO());
   const [rangeMode, setRangeMode] = useState<RangeMode>("dia");
+  const [incluirFinde, setIncluirFinde] = useState(false);
   const [photos, setPhotos] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<SyncStatus>("conectando");
   const [lastError, setLastError] = useState<string | null>(null);
@@ -379,6 +385,34 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     [write, email],
   );
 
+  /**
+   * Escribe el mismo cambio en varios días de una tacada. Cada día calcula su
+   * propio parche a partir de lo que ya tenía, para no pisar lo que haya.
+   * Si `build` devuelve null para un día, ese día no se toca.
+   */
+  const saveDays = useCallback(
+    (isos: string[], build: (d: DayData, iso: string) => any) => {
+      if (!db) return;
+      write(async () => {
+        if (!db) return;
+        const lote = writeBatch(db);
+        let n = 0;
+        for (const iso of isos) {
+          const patch = build(days[iso] || EMPTY_DAY, iso);
+          if (!patch) continue;
+          lote.set(
+            doc(db, COL_DIAS, iso),
+            { ...patch, updatedBy: email || "desconocido", updatedAt: new Date().toISOString() },
+            { merge: true },
+          );
+          n++;
+        }
+        if (n) await lote.commit();
+      });
+    },
+    [days, email, write],
+  );
+
   const dayOf = useCallback((iso: string): DayData => days[iso] || EMPTY_DAY, [days]);
   const day = dayOf(date);
 
@@ -408,7 +442,23 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const value: PlannerContextValue = useMemo(() => {
     const cat = catalog || EMPTY_CATALOG;
 
+    const rango = rangeMode === "dia" ? [date] : rangeMode === "semana" ? daysOfWeek(date) : daysOfMonth(date);
+
+    // En semana o mes se reparte sobre los días laborables: meter gente en
+    // sábado, domingo o festivo sería casi siempre un error.
+    const destino =
+      rangeMode === "dia"
+        ? [date]
+        : rango.filter((iso) => incluirFinde || (!esFinDeSemana(iso) && !nombreFestivo(iso, cat.festivosLocales)));
+
+    /** Días del destino en los que esa persona no está de baja ni de vacaciones. */
+    const diasDisponibles = (employeeId: string) =>
+      destino.filter((iso) => !cat.absences.some((a) => a.employeeId === employeeId && a.from <= iso && iso <= a.to));
+
     return {
+      diasDestino: destino,
+      incluirFinde,
+      setIncluirFinde,
       state,
       status,
       lastError,
@@ -416,7 +466,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       setDate,
       rangeMode,
       setRangeMode,
-      rangeDays: rangeMode === "dia" ? [date] : rangeMode === "semana" ? daysOfWeek(date) : daysOfMonth(date),
+      rangeDays: rango,
       day,
       dayOf,
 
@@ -430,43 +480,61 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       },
 
       assignEmployee: (workId, employeeId) => {
-        const list = day.crew[workId] || [];
-        if (list.includes(employeeId)) return;
-        const crew: Record<string, string[]> = {};
-        crew[workId] = list.concat([employeeId]);
-        saveDay(date, { crew });
+        // Se salta los días en los que la persona está ausente.
+        saveDays(diasDisponibles(employeeId), (d) => {
+          const list = d.crew[workId] || [];
+          if (list.includes(employeeId)) return null;
+          const crew: Record<string, string[]> = {};
+          crew[workId] = list.concat([employeeId]);
+          return { crew };
+        });
       },
 
       unassignEmployee: (workId, employeeId) => {
-        const list = day.crew[workId] || [];
-        const crew: Record<string, string[]> = {};
-        crew[workId] = list.filter((id) => id !== employeeId);
-        saveDay(date, { crew });
+        saveDays(destino, (d) => {
+          const list = d.crew[workId] || [];
+          if (!list.includes(employeeId)) return null;
+          const crew: Record<string, string[]> = {};
+          crew[workId] = list.filter((id) => id !== employeeId);
+          return { crew };
+        });
       },
 
       freeEmployee: (employeeId) => {
-        const crew: Record<string, string[]> = {};
-        for (const entry of Object.entries(day.crew)) {
-          if (entry[1].includes(employeeId)) crew[entry[0]] = entry[1].filter((id) => id !== employeeId);
-        }
-        if (Object.keys(crew).length) saveDay(date, { crew });
+        saveDays(destino, (d) => {
+          const crew: Record<string, string[]> = {};
+          for (const entry of Object.entries(d.crew || {})) {
+            if (entry[1].includes(employeeId)) crew[entry[0]] = entry[1].filter((id) => id !== employeeId);
+          }
+          return Object.keys(crew).length ? { crew } : null;
+        });
       },
 
       toggleVehicle: (workId, vehicleId, turno) => {
         const key = slotKey(vehicleId, turno || "DIA");
-        const list = day.vehicles[workId] || [];
-        const next = list.includes(key) ? list.filter((k) => k !== key) : list.concat([key]);
-        const vehicles: Record<string, string[]> = {};
-        vehicles[workId] = next;
-        saveDay(date, { vehicles });
+        // Quitar o poner se decide una vez, mirando el día seleccionado, y se
+        // aplica igual a todos: si no, cada día haría lo contrario del anterior.
+        const quitar = (day.vehicles[workId] || []).includes(key);
+        saveDays(destino, (d) => {
+          const list = d.vehicles[workId] || [];
+          if (quitar && !list.includes(key)) return null;
+          if (!quitar && list.includes(key)) return null;
+          const vehicles: Record<string, string[]> = {};
+          vehicles[workId] = quitar ? list.filter((k) => k !== key) : list.concat([key]);
+          return { vehicles };
+        });
       },
 
       setShift: (workId, employeeId, patch) => {
-        const actual = ((day.shifts || {})[workId] || {})[employeeId] || { turno: "DIA" as Turno };
-        const shifts: Record<string, Record<string, Shift>> = {};
-        shifts[workId] = {};
-        shifts[workId][employeeId] = { ...actual, ...patch };
-        saveDay(date, { shifts });
+        // Solo en los días en los que esa persona está en esa obra.
+        saveDays(destino, (d) => {
+          if (!(d.crew[workId] || []).includes(employeeId)) return null;
+          const actual = ((d.shifts || {})[workId] || {})[employeeId] || { turno: "DIA" as Turno };
+          const shifts: Record<string, Record<string, Shift>> = {};
+          shifts[workId] = {};
+          shifts[workId][employeeId] = { ...actual, ...patch };
+          return { shifts };
+        });
       },
 
       shiftOf: (workId, employeeId) => {
@@ -794,7 +862,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         return Object.values(d.needs[workId] || {}).reduce((a, b) => a + (Number(b) || 0), 0);
       },
     };
-  }, [state, catalog, days, date, rangeMode, day, dayOf, status, lastError, photos, saveCatalog, saveDay, purgeFromDays, write]);
+  }, [state, catalog, days, date, rangeMode, incluirFinde, day, dayOf, status, lastError, photos, saveCatalog, saveDay, saveDays, purgeFromDays, write]);
 
   if (!firebaseReady) return <ConfigMissing />;
 
