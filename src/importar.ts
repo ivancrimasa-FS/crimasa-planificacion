@@ -218,19 +218,21 @@ function leerDatosMaestros(wb: any, XLSX: any, out: Importado) {
   };
 
   // --- Jefes de obra ---
-  // La hoja JO_CyM no trae el código JO-xx, así que se asigna por el orden de
-  // las filas. Las obras que apunten a un código sin persona conocida reciben
-  // un jefe provisional con el propio código, para no quedarse huérfanas.
+  // La hoja JO_CyM relaciona el código JO-xx con la persona. Sin la columna COD
+  // no se adivina: asociar por orden de filas pone obras al jefe equivocado.
   const jo = hoja("JO_CyM");
   const porCodigo: Record<string, Manager> = {};
-  jo.forEach((fila, i) => {
-    const nombre = [campo(fila, "nombre"), campo(fila, "apellidos")].filter(Boolean).join(" ").trim();
-    if (!nombre) return;
-    const codigo = "JO-" + String(i + 1).padStart(2, "0");
-    const m: Manager = { id: slug("mg", nombre), name: nombre };
-    porCodigo[codigo] = m;
-    out.managers.push(m);
-  });
+  const sinColumnaCodigo = jo.length > 0 && !jo.some((f) => campo(f, "cod", "codigo", "codigo_jo"));
+  if (!sinColumnaCodigo) {
+    for (const fila of jo) {
+      const nombre = [campo(fila, "nombre"), campo(fila, "apellidos")].filter(Boolean).join(" ").trim();
+      const codigo = String(campo(fila, "cod", "codigo", "codigo_jo") || "").trim().toUpperCase();
+      if (!nombre || !codigo) continue;
+      const m: Manager = { id: slug("mg", nombre), name: nombre, code: codigo } as Manager;
+      porCodigo[codigo] = m;
+      out.managers.push(m);
+    }
+  }
 
   // --- Obras ---
   const obras = hoja("Obras_CyM");
@@ -238,14 +240,9 @@ function leerDatosMaestros(wb: any, XLSX: any, out: Importado) {
   for (const fila of obras) {
     const code = String(campo(fila, "codigo_obra", "codigo") || "").trim();
     if (!code) continue;
-    const codJefe = String(campo(fila, "Jefe_Obra", "jefe_obra") || "").trim();
-    let manager = porCodigo[codJefe];
-    if (!manager && codJefe) {
-      manager = { id: slug("mg", codJefe), name: codJefe };
-      porCodigo[codJefe] = manager;
-      out.managers.push(manager);
-      codigosSinJefe.add(codJefe);
-    }
+    const codJefe = String(campo(fila, "Jefe_Obra", "jefe_obra") || "").trim().toUpperCase();
+    const manager = porCodigo[codJefe];
+    if (!manager && codJefe && !sinColumnaCodigo) codigosSinJefe.add(codJefe);
     const existente = out.works.find((w) => w.code.toLowerCase() === code.toLowerCase());
     const datos = {
       code,
@@ -253,8 +250,10 @@ function leerDatosMaestros(wb: any, XLSX: any, out: Importado) {
       client: String(campo(fila, "empresa") || "").trim(),
       managerId: manager ? manager.id : "",
     };
+    // Si no se sabe el jefe, no se pisa el que ya tuviera la obra.
+    if (!manager) delete (datos as any).managerId;
     if (existente) Object.assign(existente, datos);
-    else out.works.push({ id: slug("wk", code), expediente: "", active: true, ...datos });
+    else out.works.push({ id: slug("wk", code), expediente: "", active: true, managerId: "", ...datos });
   }
 
   // --- Personal ---
@@ -300,12 +299,15 @@ function leerDatosMaestros(wb: any, XLSX: any, out: Importado) {
       " vehículos",
   );
 
+  if (sinColumnaCodigo) {
+    out.avisos.push(
+      "La hoja JO_CyM no trae la columna COD: no se cargan jefes de obra ni se cambia el jefe de ninguna obra.",
+    );
+  }
   if (codigosSinJefe.size) {
     out.avisos.push(
-      "La hoja JO_CyM no trae la columna de código, así que los jefes se han asociado por el orden de las filas. " +
-        "Estos códigos no tienen persona y se han creado como jefe provisional: " +
-        Array.from(codigosSinJefe).sort().join(", ") +
-        ". Añade una columna 'codigo' a JO_CyM para que la asociación sea exacta.",
+      "Estos códigos de jefe aparecen en las obras pero no están en JO_CyM; esas obras conservan su jefe: " +
+        Array.from(codigosSinJefe).sort().join(", "),
     );
   }
 }

@@ -1,6 +1,8 @@
 export interface Manager {
   id: string;
   name: string;
+  /** Código JO-xx del Excel de datos, que es lo que enlaza obras y jefe. */
+  code?: string;
 }
 
 export interface Work {
