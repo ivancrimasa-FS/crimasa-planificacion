@@ -73,11 +73,16 @@ export function EmployeesTab() {
   const [category, setCategory] = useState(state.categories[0] || "Peón");
   const [bulk, setBulk] = useState("");
   const [search, setSearch] = useState("");
+  const [verBajas, setVerBajas] = useState(false);
+
+  const bajas = state.employees.filter((e) => !e.active).length;
 
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return state.employees.filter((e) => !q || e.name.toLowerCase().includes(q));
-  }, [state.employees, search]);
+    return state.employees
+      .filter((e) => verBajas || e.active)
+      .filter((e) => !q || e.name.toLowerCase().includes(q));
+  }, [state.employees, search, verBajas]);
 
   const addBulk = () => {
     const lines = bulk
@@ -162,6 +167,10 @@ export function EmployeesTab() {
       <AbsencesPanel />
 
       <div className="card-surface p-5">
+        <label className="row xs muted" style={{ gap: "0.35rem", marginBottom: "0.5rem" }}>
+          <input type="checkbox" checked={verBajas} onChange={(ev) => setVerBajas(ev.target.checked)} />
+          Ver también las bajas ({bajas})
+        </label>
         <table className="table">
           <thead>
             <tr>
@@ -204,7 +213,17 @@ export function EmployeesTab() {
                     className="btn btn-icon btn-danger"
                     title="Eliminar trabajador"
                     onClick={() => {
-                      if (window.confirm(`¿Eliminar a ${e.name}? Se quitará de todas las obras planificadas.`))
+                      if (
+                        window.confirm(
+                          "¿Borrar a " +
+                            e.name +
+                            " DEFINITIVAMENTE?\n\n" +
+                            "· Se quitará de toda la planificación, también de los días pasados.\n" +
+                            "· Si sigue en el Excel de CONEXION A DB, el script de mañana lo volverá a crear.\n\n" +
+                            "Si la persona se ha ido de la empresa NO hace falta borrarla: basta con que " +
+                            "desaparezca del Excel y pasará a Baja sola, conservando el histórico.",
+                        )
+                      )
                         removeEmployee(e.id);
                     }}
                   >
