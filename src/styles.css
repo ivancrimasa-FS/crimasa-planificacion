@@ -1424,3 +1424,45 @@ main.wrap {
 .modo-banner strong {
   letter-spacing: 0.02em;
 }
+
+/* ---------- contadores del panel de personas ---------- */
+
+.contadores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0.15rem;
+}
+
+.contador {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.contador strong {
+  color: var(--foreground);
+}
+
+.contador em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.contador[data-tipo="asignadas"] {
+  border-color: color-mix(in oklab, var(--ok) 45%, var(--border));
+  background: color-mix(in oklab, var(--ok) 10%, var(--card));
+}
+
+.contador[data-tipo="libres"] {
+  border-color: color-mix(in oklab, var(--gold) 55%, var(--border));
+  background: color-mix(in oklab, var(--gold) 12%, var(--card));
+}
+
+.contador[data-tipo="fuera"] {
+  border-color: color-mix(in oklab, var(--destructive) 30%, var(--border));
+}
