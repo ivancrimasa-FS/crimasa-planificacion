@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarOff, Truck, X } from "lucide-react";
-import { formatLong, startOfWeek, usePlanner, weekNumber, daysOfWeek } from "../store";
+import { formatLong, fromISO, startOfWeek, usePlanner, weekNumber, daysOfWeek } from "../store";
 import { DateBar } from "./ui";
 import { Pawn } from "./Pawn";
 import { ABSENCE_COLORS, CATEGORY_COLORS, parseSlot, slotKey } from "../types";
@@ -92,21 +92,6 @@ export function CrewBoardTab() {
 
   const ausencias: Record<string, Absence> = useMemo(() => absencesOn(date), [absencesOn, date]);
 
-  /** Cuántas obras tiene asignadas cada persona ese día (para avisar de duplicados). */
-  const vecesAsignado = useMemo(() => {
-    const count: Record<string, number> = {};
-    for (const list of Object.values(vista.crew)) {
-      for (const id of list) count[id] = (count[id] || 0) + 1;
-    }
-    return count;
-  }, [vista.crew]);
-
-  const avisoDe = (employeeId: string): string | null => {
-    if (ausencias[employeeId]) return ausencias[employeeId].type + ": no debería estar trabajando";
-    if ((vecesAsignado[employeeId] || 0) > 1) return "Asignado a " + vecesAsignado[employeeId] + " obras este día";
-    return null;
-  };
-
   /** Para cada vehículo+turno ya asignado, en qué obra está y cuántas veces. */
   const vehiculosOcupados = useMemo(() => {
     const mapa: Record<string, { obras: string[]; workIds: string[] }> = {};
@@ -126,6 +111,58 @@ export function CrewBoardTab() {
     for (const [k, v] of Object.entries(vehiculosOcupados)) count[k] = v.obras.length;
     return count;
   }, [vehiculosOcupados]);
+
+  const LETRAS = ["D", "L", "M", "X", "J", "V", "S"];
+  const letraDe = (iso: string) => LETRAS[fromISO(iso).getDay()];
+
+  /**
+   * Duplicados REALES: la misma persona en dos obras el MISMO día. En la vista
+   * de semana no vale mirar la unión: estar el lunes en una obra y el martes en
+   * otra es un cambio de obra normal, no un error.
+   */
+  const duplicados = useMemo(() => {
+    const out: Record<string, { obras: number; dias: string[] }> = {};
+    for (const iso of diasDestino) {
+      const cuenta: Record<string, number> = {};
+      for (const lista of Object.values(dayOf(iso).crew || {})) {
+        for (const id of lista) cuenta[id] = (cuenta[id] || 0) + 1;
+      }
+      for (const [id, n] of Object.entries(cuenta)) {
+        if (n > 1) {
+          out[id] = out[id] || { obras: 0, dias: [] };
+          out[id].obras = Math.max(out[id].obras, n);
+          out[id].dias.push(iso);
+        }
+      }
+    }
+    return out;
+  }, [diasDestino, dayOf]);
+
+  /** Personas que en el rango pasan por más de una obra, pero nunca el mismo día. */
+  const cambiosDeObra = useMemo(() => {
+    const obrasPorPersona: Record<string, Set<string>> = {};
+    for (const iso of diasDestino) {
+      for (const [wid, lista] of Object.entries(dayOf(iso).crew || {})) {
+        for (const id of lista) (obrasPorPersona[id] = obrasPorPersona[id] || new Set()).add(wid);
+      }
+    }
+    const out: Record<string, number> = {};
+    for (const [id, set] of Object.entries(obrasPorPersona)) {
+      if (set.size > 1 && !duplicados[id]) out[id] = set.size;
+    }
+    return out;
+  }, [diasDestino, dayOf, duplicados]);
+
+  const avisoDe = (employeeId: string): string | null => {
+    if (ausencias[employeeId]) return ausencias[employeeId].type + ": no debería estar trabajando";
+    const d = duplicados[employeeId];
+    if (d) {
+      return (
+        "En " + d.obras + " obras el mismo día: " + d.dias.map((x) => x.slice(8) + "/" + x.slice(5, 7)).join(", ")
+      );
+    }
+    return null;
+  };
 
   const festivo = nombreFestivo(date, state.festivosLocales);
   const finDeSemana = esFinDeSemana(date);
@@ -431,6 +468,18 @@ export function CrewBoardTab() {
                     shiftOf={(empId) => shiftEnRango(w.id, empId)}
                     diasEn={(empId) => diasEn(w.id, empId)}
                     totalDias={diasDestino.length}
+                    diasDe={(empId) =>
+                      diasDestino.map((iso) => ({
+                        iso,
+                        letra: letraDe(iso),
+                        on: (dayOf(iso).crew[w.id] || []).includes(empId),
+                      }))
+                    }
+                    cambioDe={(empId) =>
+                      cambiosDeObra[empId]
+                        ? "Esta semana pasa por " + cambiosDeObra[empId] + " obras, en días distintos"
+                        : null
+                    }
                     onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
                     onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
                     dupVehiculos={vehiculosDuplicados}
@@ -483,6 +532,18 @@ export function CrewBoardTab() {
                     shiftOf={(empId) => shiftEnRango(w.id, empId)}
                     diasEn={(empId) => diasEn(w.id, empId)}
                     totalDias={diasDestino.length}
+                    diasDe={(empId) =>
+                      diasDestino.map((iso) => ({
+                        iso,
+                        letra: letraDe(iso),
+                        on: (dayOf(iso).crew[w.id] || []).includes(empId),
+                      }))
+                    }
+                    cambioDe={(empId) =>
+                      cambiosDeObra[empId]
+                        ? "Esta semana pasa por " + cambiosDeObra[empId] + " obras, en días distintos"
+                        : null
+                    }
                     onTurno={(empId, turno) => setShift(w.id, empId, { turno })}
                     onDieta={(empId, dieta) => setShift(w.id, empId, { dieta })}
                     dupVehiculos={vehiculosDuplicados}
@@ -524,6 +585,8 @@ interface WorkBoxProps {
   shiftOf: (employeeId: string) => { turno: Turno; dieta?: boolean };
   diasEn: (employeeId: string) => number;
   totalDias: number;
+  diasDe: (employeeId: string) => { iso: string; letra: string; on: boolean }[];
+  cambioDe: (employeeId: string) => string | null;
   onTurno: (employeeId: string, turno: Turno) => void;
   onDieta: (employeeId: string, dieta: boolean) => void;
   dupVehiculos: Record<string, number>;
@@ -595,8 +658,8 @@ function WorkBox(p: WorkBoxProps) {
               onClick={() => p.onPawnClick(e.id)}
               onRemove={() => p.onRemovePawn(e.id)}
               warn={p.avisoDe(e.id)}
-              nota={p.totalDias > 1 ? p.diasEn(e.id) + "/" + p.totalDias + " días" : null}
-              notaParcial={p.totalDias > 1 && p.diasEn(e.id) < p.totalDias}
+              dias={p.totalDias > 1 ? p.diasDe(e.id) : null}
+              cambio={p.totalDias > 1 ? p.cambioDe(e.id) : null}
               footer={
                 <span className="turno-row" onClick={(ev) => ev.stopPropagation()}>
                   <button

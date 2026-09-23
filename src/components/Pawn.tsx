@@ -85,6 +85,10 @@ interface PawnProps {
   nota?: string | null;
   /** Resalta la nota cuando la asignación no cubre todo el rango. */
   notaParcial?: boolean;
+  /** Días del rango: se pinta una tira L M X J V marcando en cuáles está aquí. */
+  dias?: { iso: string; letra: string; on: boolean }[] | null;
+  /** La persona está en otra obra otros días del rango (cambio de obra, no error). */
+  cambio?: string | null;
 }
 
 export function Pawn({
@@ -102,6 +106,8 @@ export function Pawn({
   footer,
   nota,
   notaParcial,
+  dias,
+  cambio,
 }: PawnProps) {
   const common = {
     draggable: true,
@@ -128,7 +134,21 @@ export function Pawn({
         <span className="cat-tag" style={{ background: categoryColor(employee.category) }} title={employee.category}>
           {abreviaturaCategoria(employee.category)}
         </span>
-        {nota && (
+        {dias && dias.length > 1 && (
+          <span className="dias-strip" title={"Está en esta obra: " + dias.filter((d) => d.on).map((d) => d.iso).join(", ")}>
+            {dias.map((d) => (
+              <i key={d.iso} data-on={d.on ? "true" : "false"}>
+                {d.letra}
+              </i>
+            ))}
+          </span>
+        )}
+        {cambio && (
+          <span className="cambio-tag" title={cambio}>
+            ⇄ cambia de obra
+          </span>
+        )}
+        {nota && !dias && (
           <span className="dias-tag" data-parcial={notaParcial ? "true" : "false"}>
             {nota}
           </span>
