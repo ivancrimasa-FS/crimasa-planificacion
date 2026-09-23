@@ -146,7 +146,11 @@ export function CrewBoardTab() {
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
   }, [state.employees, assignedIds, search, showAll, ausencias]);
 
+  const activos = state.employees.filter((e) => e.active).length;
   const freeCount = state.employees.filter((e) => e.active && !assignedIds.has(e.id) && !ausencias[e.id]).length;
+  const asignadas = assignedIds.size;
+  /** Puestos cubiertos: si alguien está en dos obras, cuenta dos veces. */
+  const puestos = Object.values(vista.crew).reduce((a, l) => a + l.length, 0);
 
   const ausentes = state.employees
     .filter((e) => e.active && ausencias[e.id])
@@ -198,6 +202,16 @@ export function CrewBoardTab() {
     : state.works.filter((w) => w.active && !state.managers.some((m) => m.id === w.managerId));
 
   const obrasVisibles = managersWithWorks.reduce((a, g) => a + g.works.length, 0) + orphanWorks.length;
+
+  /** Personas distintas asignadas a las obras que se están viendo ahora mismo. */
+  const personasVisibles = (() => {
+    const set = new Set<string>();
+    for (const g of managersWithWorks) {
+      for (const w of g.works) (vista.crew[w.id] || []).forEach((id) => set.add(id));
+    }
+    for (const w of orphanWorks) (vista.crew[w.id] || []).forEach((id) => set.add(id));
+    return set.size;
+  })();
 
   return (
     <div className="stack">
@@ -253,7 +267,9 @@ export function CrewBoardTab() {
             ))}
           </div>
           <span className="xs muted">
-            {obrasVisibles} {obrasVisibles === 1 ? "obra" : "obras"} en pantalla
+            {obrasVisibles} {obrasVisibles === 1 ? "obra" : "obras"} en pantalla ·{" "}
+            <strong className="nums">{personasVisibles}</strong>{" "}
+            {personasVisibles === 1 ? "persona asignada" : "personas asignadas"}
           </span>
         </div>
         {(festivo || finDeSemana) && (
@@ -296,9 +312,23 @@ export function CrewBoardTab() {
           }}
         >
           <h2 className="section-title">Personas libres</h2>
-          <p className="section-help">
-            {freeCount} sin obra este día. Suéltalas aquí para liberarlas.
-          </p>
+          <div className="contadores">
+            <span className="contador" data-tipo="asignadas">
+              <strong className="nums">
+                {asignadas}/{activos}
+              </strong>{" "}
+              asignadas{puestos !== asignadas && <em> ({puestos} puestos)</em>}
+            </span>
+            <span className="contador" data-tipo="libres">
+              quedan <strong className="nums">{freeCount}</strong>
+            </span>
+            {ausentes.length > 0 && (
+              <span className="contador" data-tipo="fuera">
+                <strong className="nums">{ausentes.length}</strong> no disponibles
+              </span>
+            )}
+          </div>
+          <p className="section-help">Suelta aquí a quien quieras liberar.</p>
           <input
             className="input"
             style={{ marginTop: "0.6rem" }}
@@ -539,7 +569,11 @@ function WorkBox(p: WorkBoxProps) {
           className="count-badge"
           data-full={full ? "true" : "false"}
           data-over={over ? "true" : "false"}
-          title={p.previstas ? `${asignadas} asignadas de ${p.previstas} previstas` : `${asignadas} asignadas`}
+          title={
+            p.previstas
+              ? asignadas + " personas asignadas de " + p.previstas + " previstas"
+              : asignadas + " personas asignadas (sin previsión para este día)"
+          }
         >
           {p.previstas ? `${asignadas}/${p.previstas}` : asignadas}
         </span>
