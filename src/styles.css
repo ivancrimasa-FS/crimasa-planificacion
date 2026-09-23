@@ -1466,3 +1466,42 @@ main.wrap {
 .contador[data-tipo="fuera"] {
   border-color: color-mix(in oklab, var(--destructive) 30%, var(--border));
 }
+
+/* ---------- tira de días y cambio de obra en el muñeco ---------- */
+
+.dias-strip {
+  display: flex;
+  gap: 1px;
+  margin-top: 1px;
+}
+
+.dias-strip i {
+  font-style: normal;
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1;
+  width: 11px;
+  height: 11px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+  background: var(--muted);
+  color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
+
+.dias-strip i[data-on="true"] {
+  background: var(--navy);
+  color: var(--card);
+}
+
+.cambio-tag {
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--chart-2) 20%, var(--card));
+  color: color-mix(in oklab, var(--chart-2) 80%, black);
+  border: 1px solid color-mix(in oklab, var(--chart-2) 45%, transparent);
+  white-space: nowrap;
+}
