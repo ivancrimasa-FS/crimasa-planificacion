@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, CalendarOff, GripVertical, HardHat } from "lucide-react";
-import { daysOfMonth, daysOfWeek, fromISO, shortDay, usePlanner, weekNumber } from "../store";
+import { daysOfMonth, daysOfWeek, formatLong, fromISO, shortDay, usePlanner, weekNumber } from "../store";
 import { esFinDeSemana, nombreFestivo } from "../festivos";
 import { DateBar } from "./ui";
 
@@ -31,15 +31,17 @@ export function PlanningTab() {
       return { previstas, conNombre };
     };
 
-    const periodos = [
-      { etiqueta: "Este día", detalle: date, ...totalEn([date]) },
-      { etiqueta: "Semana " + weekNumber(date), detalle: "lun a dom", ...totalEn(daysOfWeek(date)) },
-      {
-        etiqueta: fromISO(date).toLocaleDateString("es-ES", { month: "long" }),
-        detalle: "mes completo",
-        ...totalEn(daysOfMonth(date)),
-      },
-    ];
+    // Solo el periodo que esté seleccionado arriba: día, semana o mes.
+    const periodo =
+      rangeMode === "dia"
+        ? { etiqueta: "el día " + formatLong(date), isos: [date] }
+        : rangeMode === "semana"
+          ? { etiqueta: "la semana " + weekNumber(date), isos: daysOfWeek(date) }
+          : {
+              etiqueta: fromISO(date).toLocaleDateString("es-ES", { month: "long", year: "numeric" }),
+              isos: daysOfMonth(date),
+            };
+    const total = totalEn(periodo.isos);
     return (
       <div className="stack">
         <div className="card-surface p-5 stack" style={{ gap: "0.75rem" }}>
@@ -66,19 +68,26 @@ export function PlanningTab() {
             </p>
           )}
           <div className="row" style={{ gap: "0.5rem" }}>
-            {periodos.map((p) => (
-              <div key={p.etiqueta} className="stat-tile" style={{ textAlign: "left" }}>
-                <p className="v">{p.previstas}</p>
-                <p className="l" style={{ textTransform: "capitalize" }}>
-                  {p.etiqueta} · previstas
+            <div className="stat-tile">
+              <p className="v">{total.previstas}</p>
+              <p className="l">Previstas</p>
+            </div>
+            <div className="stat-tile">
+              <p className="v">{total.conNombre}</p>
+              <p className="l">Con nombre</p>
+            </div>
+            {total.previstas > 0 && (
+              <div className="stat-tile">
+                <p className="v" style={{ color: total.conNombre < total.previstas ? "var(--destructive)" : "var(--ok)" }}>
+                  {total.conNombre - total.previstas > 0 ? "+" : ""}
+                  {total.conNombre - total.previstas}
                 </p>
-                <p className="l">
-                  con nombre: <strong className="nums">{p.conNombre}</strong>
-                </p>
+                <p className="l">Diferencia</p>
               </div>
-            ))}
+            )}
             <span className="xs muted">
-              Totales de {manager.name} sumando sus {works.length} {works.length === 1 ? "obra" : "obras"}.
+              Total de {manager.name} en {periodo.etiqueta}, sumando sus {works.length}{" "}
+              {works.length === 1 ? "obra" : "obras"}.
             </span>
           </div>
           <p className="section-help">
