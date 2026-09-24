@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, CalendarOff, GripVertical, HardHat } from "lucide-react";
-import { fromISO, shortDay, usePlanner } from "../store";
+import { daysOfMonth, daysOfWeek, fromISO, shortDay, usePlanner, weekNumber } from "../store";
 import { esFinDeSemana, nombreFestivo } from "../festivos";
 import { DateBar } from "./ui";
 
@@ -16,6 +16,30 @@ export function PlanningTab() {
 
   if (manager) {
     const works = worksOf(manager.id);
+
+    /** Totales del jefe de obra sumando TODAS sus obras, en los tres periodos. */
+    const totalEn = (isos: string[]) => {
+      let previstas = 0;
+      let conNombre = 0;
+      for (const iso of isos) {
+        const d = dayOf(iso);
+        for (const w of works) {
+          previstas += needTotal(w.id, iso);
+          conNombre += (d.crew[w.id] || []).length;
+        }
+      }
+      return { previstas, conNombre };
+    };
+
+    const periodos = [
+      { etiqueta: "Este día", detalle: date, ...totalEn([date]) },
+      { etiqueta: "Semana " + weekNumber(date), detalle: "lun a dom", ...totalEn(daysOfWeek(date)) },
+      {
+        etiqueta: fromISO(date).toLocaleDateString("es-ES", { month: "long" }),
+        detalle: "mes completo",
+        ...totalEn(daysOfMonth(date)),
+      },
+    ];
     return (
       <div className="stack">
         <div className="card-surface p-5 stack" style={{ gap: "0.75rem" }}>
@@ -41,6 +65,22 @@ export function PlanningTab() {
               {day.updatedAt ? " · " + new Date(day.updatedAt).toLocaleString("es-ES") : ""}
             </p>
           )}
+          <div className="row" style={{ gap: "0.5rem" }}>
+            {periodos.map((p) => (
+              <div key={p.etiqueta} className="stat-tile" style={{ textAlign: "left" }}>
+                <p className="v">{p.previstas}</p>
+                <p className="l" style={{ textTransform: "capitalize" }}>
+                  {p.etiqueta} · previstas
+                </p>
+                <p className="l">
+                  con nombre: <strong className="nums">{p.conNombre}</strong>
+                </p>
+              </div>
+            ))}
+            <span className="xs muted">
+              Totales de {manager.name} sumando sus {works.length} {works.length === 1 ? "obra" : "obras"}.
+            </span>
+          </div>
           <p className="section-help">
             Escribe cuántas personas hacen falta de cada categoría. En modo Semana o Mes editas todos los días
             de una vez; los nombres concretos se ponen en “Reparto por nombre”.
