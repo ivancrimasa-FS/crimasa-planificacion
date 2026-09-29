@@ -12,6 +12,8 @@ export interface Work {
   expediente: string; // SVQ-31/2026
   /** Cliente o empresa: AENA, LIDL, DIA, Sampol… */
   client?: string;
+  /** Creada a mano en la aplicación: el script del Excel no la cierra. */
+  manual?: boolean;
   managerId: string;
   active: boolean;
 }

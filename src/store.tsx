@@ -603,7 +603,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         saveCatalog({ managers: list });
       },
 
-      addWork: (w) => saveCatalog({ works: cat.works.concat([{ ...w, id: uid("wk") }]) }),
+      // manual: true para que la sincronizacion diaria no la cierre por no estar en el Excel
+      addWork: (w) => saveCatalog({ works: cat.works.concat([{ ...w, id: uid("wk"), manual: true }]) }),
 
       updateWork: (id, patch) =>
         saveCatalog({ works: cat.works.map((w) => (w.id === id ? { ...w, ...patch } : w)) }),
