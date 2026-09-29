@@ -51,6 +51,17 @@ export function YearCalendarTab() {
 
   const plantilla = state.employees.filter((e) => e.active).length;
 
+  /** Las obras cerradas no cuentan en la previsión, aunque conserven sus números. */
+  const obrasActivas = useMemo(() => new Set(state.works.filter((w) => w.active).map((w) => w.id)), [state.works]);
+  const cerradasConDatos = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [iso, d] of Object.entries(state.days)) {
+      if (!iso.startsWith(String(year))) continue;
+      for (const wid of Object.keys(d.needs || {})) if (!obrasActivas.has(wid)) ids.add(wid);
+    }
+    return ids.size;
+  }, [state.days, year, obrasActivas]);
+
   /** Personas realmente disponibles ese día: plantilla activa menos ausencias. */
   const disponiblesEn = useMemo(() => {
     const cache: Record<string, number> = {};
@@ -73,11 +84,13 @@ export function YearCalendarTab() {
       let n = 0;
       if (source === "crew") {
         for (const [wid, list] of Object.entries(d.crew || {})) {
+          if (!obrasActivas.has(wid)) continue;
           if (workId && wid !== workId) continue;
           n += list.length;
         }
       } else {
         for (const [wid, byCat] of Object.entries(d.needs || {})) {
+          if (!obrasActivas.has(wid)) continue;
           if (workId && wid !== workId) continue;
           n += Object.values(byCat).reduce((a, b) => a + (Number(b) || 0), 0);
         }
@@ -85,7 +98,7 @@ export function YearCalendarTab() {
       out[iso] = n;
     }
     return out;
-  }, [state.days, year, workId, source]);
+  }, [state.days, year, workId, source, obrasActivas]);
 
   /** Previsión total del día (todas las obras), que es lo que se compara con la plantilla. */
   const previstasTotales = useMemo(() => {
@@ -93,13 +106,14 @@ export function YearCalendarTab() {
     for (const [iso, d] of Object.entries(state.days)) {
       if (!iso.startsWith(String(year))) continue;
       let n = 0;
-      for (const byCat of Object.values(d.needs || {})) {
+      for (const [wid, byCat] of Object.entries(d.needs || {})) {
+        if (!obrasActivas.has(wid)) continue;
         n += Object.values(byCat).reduce((a, b) => a + (Number(b) || 0), 0);
       }
       out[iso] = n;
     }
     return out;
-  }, [state.days, year]);
+  }, [state.days, year, obrasActivas]);
 
   const festivos = useMemo(() => ({ ...festivosDe(year), ...state.festivosLocales }), [year, state.festivosLocales]);
 
@@ -117,6 +131,7 @@ export function YearCalendarTab() {
     if (!d) return [];
     const out: { code: string; name: string; manager: string; n: number }[] = [];
     for (const w of state.works) {
+      if (!w.active) continue;
       if (workId && w.id !== workId) continue;
       const n =
         source === "crew"
@@ -161,7 +176,8 @@ export function YearCalendarTab() {
       if (!iso.startsWith(String(year))) continue;
       for (const [wid, byCat] of Object.entries(d.needs || {})) {
         const w = state.works.find((x) => x.id === wid);
-        const jefe = state.managers.find((m) => m.id === w?.managerId)?.name || "Sin jefe";
+        if (!w || !w.active) continue;
+        const jefe = state.managers.find((m) => m.id === w.managerId)?.name || "Sin jefe de obra";
         acc[jefe] = (acc[jefe] || 0) + Object.values(byCat).reduce((a, b) => a + (Number(b) || 0), 0);
       }
     }
@@ -193,17 +209,24 @@ export function YearCalendarTab() {
           </select>
           <select className="select" style={{ width: "auto" }} value={workId} onChange={(ev) => setWorkId(ev.target.value)}>
             <option value="">Todas las obras</option>
-            {state.works.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.code} · {w.name}
-              </option>
-            ))}
+            {state.works
+              .filter((w) => w.active)
+              .map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.code} · {w.name}
+                </option>
+              ))}
           </select>
           <select className="select" style={{ width: "auto" }} value={source} onChange={(ev) => setSource(ev.target.value as Source)}>
             <option value="needs">Personas previstas</option>
             <option value="crew">Personas con nombre</option>
           </select>
-          <span className="xs muted">{yearTotal} personas-día</span>
+          <span className="xs muted">
+            {yearTotal} personas-día
+            {cerradasConDatos > 0 && (
+              <> · {cerradasConDatos} {cerradasConDatos === 1 ? "obra cerrada" : "obras cerradas"} no cuentan</>
+            )}
+          </span>
         </div>
 
         <div className="row" style={{ gap: "0.5rem" }}>

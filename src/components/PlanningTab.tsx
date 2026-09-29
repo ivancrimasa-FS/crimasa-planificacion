@@ -12,10 +12,20 @@ export function PlanningTab() {
 
   const festivo = nombreFestivo(date, state.festivosLocales);
   const finDeSemana = esFinDeSemana(date);
-  const manager = state.managers.find((m) => m.id === selected) || null;
+  const SIN_JEFE = "__sin_jefe__";
+
+  /** Obras activas que no tienen jefe asignado: van a su propio cajón. */
+  const obrasSinJefe = state.works.filter(
+    (w) => w.active && !state.managers.some((m) => m.id === w.managerId),
+  );
+
+  const manager =
+    selected === SIN_JEFE
+      ? { id: SIN_JEFE, name: "Sin jefe de obra" }
+      : state.managers.find((m) => m.id === selected) || null;
 
   if (manager) {
-    const works = worksOf(manager.id);
+    const works = manager.id === SIN_JEFE ? obrasSinJefe : worksOf(manager.id);
 
     /** Totales del jefe de obra sumando TODAS sus obras, en los tres periodos. */
     const totalEn = (isos: string[]) => {
@@ -98,7 +108,9 @@ export function PlanningTab() {
 
         {works.length === 0 && (
           <div className="card-surface empty-state">
-            Este jefe de obra no tiene obras asignadas. Añádelas en la pestaña “Jefes y obras”.
+            {manager.id === SIN_JEFE
+              ? "Todas las obras activas tienen jefe asignado."
+              : "Este jefe de obra no tiene obras asignadas. Añádelas en la pestaña “Jefes y obras”."}
           </div>
         )}
 
@@ -261,6 +273,48 @@ export function PlanningTab() {
             </div>
           );
         })}
+
+        {obrasSinJefe.length > 0 && (
+          <div
+            className="card-surface manager-card"
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelected(SIN_JEFE)}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter" || ev.key === " ") {
+                ev.preventDefault();
+                setSelected(SIN_JEFE);
+              }
+            }}
+          >
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <span className="icon-square" style={{ background: "color-mix(in oklab, var(--muted-foreground) 15%, transparent)", color: "var(--muted-foreground)" }}>
+                <HardHat size={20} />
+              </span>
+              <div>
+                <p className="section-title">Sin jefe de obra</p>
+                <p className="xs muted">
+                  {obrasSinJefe.length} {obrasSinJefe.length === 1 ? "obra" : "obras"} sin asignar
+                </p>
+              </div>
+            </div>
+            <ul className="work-list">
+              {obrasSinJefe.slice(0, 6).map((w) => (
+                <li key={w.id}>
+                  <span className="mono">{w.code}</span> · {w.name}
+                </li>
+              ))}
+              {obrasSinJefe.length > 6 && <li>y {obrasSinJefe.length - 6} más…</li>}
+            </ul>
+            <p className="xs muted" style={{ marginTop: "auto" }}>
+              {rangeMode === "dia" ? "Este día" : rangeMode === "semana" ? "Esta semana" : "Este mes"}:{" "}
+              <strong className="nums">
+                {obrasSinJefe.reduce((acc, w) => acc + rangeDays.reduce((a, iso) => a + needTotal(w.id, iso), 0), 0)}
+              </strong>{" "}
+              personas
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
