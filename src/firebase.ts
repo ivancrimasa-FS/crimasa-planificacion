@@ -43,3 +43,6 @@ export const COL_CATALOGO = "plan_catalogo";
 export const DOC_CATALOGO = "global";
 export const COL_DIAS = "plan_dias";
 export const COL_FOTOS = "plan_fotos";
+/** Órdenes que deja la web y recoge el vigilante del servidor. */
+export const COL_COMANDOS = "plan_comandos";
+export const DOC_SINCRONIZAR = "sincronizar";

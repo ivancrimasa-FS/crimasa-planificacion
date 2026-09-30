@@ -12,7 +12,16 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
-import { COL_CATALOGO, COL_DIAS, COL_FOTOS, DOC_CATALOGO, db, firebaseReady } from "./firebase";
+import {
+  COL_CATALOGO,
+  COL_COMANDOS,
+  COL_DIAS,
+  COL_FOTOS,
+  DOC_CATALOGO,
+  DOC_SINCRONIZAR,
+  db,
+  firebaseReady,
+} from "./firebase";
 import { useAuth } from "./auth";
 import { CATEGORIES } from "./types";
 import { esFinDeSemana, nombreFestivo } from "./festivos";
@@ -197,6 +206,21 @@ function normalizeDay(input: any): DayData {
 
 export type RangeMode = "dia" | "semana" | "mes";
 
+/**
+ * Orden de actualización. La web la deja aquí y el vigilante que corre en el
+ * servidor la recoge, ejecuta sincronizar_maestros.py y escribe el resultado.
+ */
+export interface Comando {
+  estado?: "pendiente" | "ejecutando" | "ok" | "error";
+  solicitadoPor?: string;
+  solicitadoEn?: string;
+  iniciadoEn?: string;
+  terminadoEn?: string;
+  resumen?: string;
+  cambios?: number;
+  mensaje?: string;
+}
+
 export type SyncStatus = "conectando" | "conectado" | "guardando" | "sin-conexion" | "error";
 
 interface PlannerContextValue {
@@ -224,6 +248,8 @@ interface PlannerContextValue {
   shiftOf: (workId: string, employeeId: string) => Shift;
   photos: Record<string, string>;
   setPhoto: (employeeId: string, dataUrl: string) => void;
+  comando: Comando | null;
+  solicitarActualizacion: () => void;
   removePhoto: (employeeId: string) => void;
   setNote: (workId: string, text: string) => void;
   copyPreviousDay: () => void;
@@ -271,6 +297,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const [rangeMode, setRangeMode] = useState<RangeMode>("dia");
   const [incluirFinde, setIncluirFinde] = useState(false);
   const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [comando, setComando] = useState<Comando | null>(null);
   const [status, setStatus] = useState<SyncStatus>("conectando");
   const [lastError, setLastError] = useState<string | null>(null);
 
@@ -327,6 +354,14 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         ),
       );
     }
+
+    unsubs.push(
+      onSnapshot(
+        doc(db, COL_COMANDOS, DOC_SINCRONIZAR),
+        (snap) => setComando((snap.data() as Comando) || null),
+        (err: any) => console.error("Error leyendo el estado de la actualización:", err),
+      ),
+    );
 
     unsubs.push(
       onSnapshot(
@@ -542,6 +577,27 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       },
 
       photos,
+      comando,
+
+      /**
+       * Deja la orden en Firestore. No ejecuta nada por sí sola: el vigilante
+       * del servidor la ve en unos segundos y lanza el script.
+       */
+      solicitarActualizacion: () => {
+        if (!db) return;
+        write(() =>
+          setDoc(doc(db, COL_COMANDOS, DOC_SINCRONIZAR), {
+            estado: "pendiente",
+            solicitadoPor: email || "desconocido",
+            solicitadoEn: new Date().toISOString(),
+            iniciadoEn: "",
+            terminadoEn: "",
+            resumen: "",
+            cambios: 0,
+            mensaje: "",
+          }),
+        );
+      },
 
       setPhoto: (employeeId, dataUrl) => {
         if (!db) return;
@@ -863,7 +919,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         return Object.values(d.needs[workId] || {}).reduce((a, b) => a + (Number(b) || 0), 0);
       },
     };
-  }, [state, catalog, days, date, rangeMode, incluirFinde, day, dayOf, status, lastError, photos, saveCatalog, saveDay, saveDays, purgeFromDays, write]);
+  }, [state, catalog, days, date, rangeMode, incluirFinde, day, dayOf, status, lastError, photos, comando, saveCatalog, saveDay, saveDays, purgeFromDays, write]);
 
   if (!firebaseReady) return <ConfigMissing />;
 

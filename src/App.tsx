@@ -1,14 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   CalendarRange,
   Download,
   FileSpreadsheet,
   HardHat,
+  RefreshCw,
   RotateCcw,
   Truck,
   Upload,
-  FileUp,
   LogOut,
   Users,
   UsersRound,
@@ -23,8 +23,6 @@ import { ManagersTab } from "./components/ManagersTab";
 import { EmployeesTab } from "./components/EmployeesTab";
 import { VehiclesTab } from "./components/VehiclesTab";
 import { Field, Modal } from "./components/ui";
-import { leerExcel, CATEGORIAS_CRIMASA } from "./importar";
-import type { Importado } from "./importar";
 
 const TABS = [
   { id: "planning", label: "Asignación diaria", Icon: CalendarRange },
@@ -184,122 +182,91 @@ function UserChip() {
   );
 }
 
-function ImportDialog({ onClose }: { onClose: () => void }) {
-  const { importar } = usePlanner();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [leyendo, setLeyendo] = useState(false);
-  const [datos, setDatos] = useState<Importado | null>(null);
-  const [modo, setModo] = useState<"fusionar" | "reemplazar">("fusionar");
-  const [error, setError] = useState<string | null>(null);
-  const [hecho, setHecho] = useState<string | null>(null);
+/** "hace 3 min" a partir de una fecha ISO. */
+function hace(iso?: string): string {
+  if (!iso) return "";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms) || ms < 0) return "";
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "hace un momento";
+  if (min < 60) return "hace " + min + " min";
+  const h = Math.floor(min / 60);
+  if (h < 24) return "hace " + h + (h === 1 ? " hora" : " horas");
+  return "hace " + Math.floor(h / 24) + " días";
+}
 
-  const elegir = async (file: File) => {
-    setLeyendo(true);
-    setError(null);
-    setDatos(null);
-    try {
-      setDatos(await leerExcel(file));
-    } catch (err: any) {
-      setError("No se pudo leer el archivo: " + (err?.message || String(err)));
-    } finally {
-      setLeyendo(false);
-    }
-  };
+/**
+ * Pide al servidor que actualice jefes, personal, vehículos y obras desde el
+ * Excel de la base de datos. La web solo deja la orden; la ejecuta el vigilante.
+ */
+function UpdateButton() {
+  const { comando, solicitarActualizacion } = usePlanner();
+  const [, refrescar] = useState(0);
 
-  const ejecutar = async () => {
-    if (!datos) return;
-    if (
-      modo === "reemplazar" &&
-      !window.confirm("Se borrará TODA la planificación actual y se sustituirá por la del Excel. ¿Seguro?")
-    )
-      return;
-    setLeyendo(true);
-    try {
-      const msg = await importar({ ...datos, categories: CATEGORIAS_CRIMASA }, modo);
-      setHecho(msg);
-    } catch (err: any) {
-      setError("Error al importar: " + (err?.message || String(err)));
-    } finally {
-      setLeyendo(false);
-    }
-  };
+  // para que el "hace X min" no se quede congelado
+  useEffect(() => {
+    const t = setInterval(() => refrescar((n) => n + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const estado = comando?.estado;
+  const trabajando = estado === "pendiente" || estado === "ejecutando";
+
+  // Si nadie la recoge, es que el vigilante del servidor no está en marcha.
+  const esperando = estado === "pendiente" && comando?.solicitadoEn
+    ? Date.now() - new Date(comando.solicitadoEn).getTime()
+    : 0;
+  const sinRespuesta = esperando > 90000;
+
+  let nota = "";
+  let color: "conectado" | "guardando" | "error" | "" = "";
+  if (sinRespuesta) {
+    nota = "El servidor no responde";
+    color = "error";
+  } else if (estado === "pendiente") {
+    nota = "En cola…";
+    color = "guardando";
+  } else if (estado === "ejecutando") {
+    nota = "Actualizando…";
+    color = "guardando";
+  } else if (estado === "ok") {
+    nota = (comando?.cambios ? comando.cambios + " cambios · " : "Sin cambios · ") + hace(comando?.terminadoEn);
+    color = "conectado";
+  } else if (estado === "error") {
+    nota = "Falló " + hace(comando?.terminadoEn);
+    color = "error";
+  }
 
   return (
-    <Modal title="Cargar desde Excel" onClose={onClose}>
-      {!hecho && (
-        <>
-          <p className="xs muted">
-            Sube PLANIFICACIÓN_ANUAL_CRIMASA.xlsx o PERSONAL_CRIMASA_2026.xlsm. Primero te enseño qué he
-            leído; no se guarda nada hasta que lo confirmes.
-          </p>
-          <button className="btn" onClick={() => fileRef.current?.click()} disabled={leyendo}>
-            <FileUp /> {leyendo ? "Leyendo…" : "Elegir archivo"}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xlsm,.xls"
-            style={{ display: "none" }}
-            onChange={(ev) => {
-              const f = ev.target.files?.[0];
-              ev.target.value = "";
-              if (f) elegir(f);
-            }}
-          />
-        </>
+    <>
+      <button
+        className="btn"
+        disabled={trabajando && !sinRespuesta}
+        onClick={solicitarActualizacion}
+        title={
+          "Trae del Excel de la base de datos las altas y bajas de personal, vehículos, obras y jefes de obra. " +
+          "No toca la planificación."
+        }
+      >
+        <RefreshCw /> {trabajando && !sinRespuesta ? "Actualizando…" : "Actualizar datos"}
+      </button>
+      {nota && (
+        <span
+          className="sync-badge"
+          data-status={color}
+          title={
+            comando?.mensaje ||
+            comando?.resumen ||
+            (sinRespuesta
+              ? "La orden se ha enviado pero nadie la ha recogido. Avisa a Informática: el vigilante del servidor puede estar parado."
+              : "")
+          }
+        >
+          <i />
+          {nota}
+        </span>
       )}
-
-      {error && <p className="login-error">{error}</p>}
-
-      {datos && !hecho && (
-        <>
-          <div className="import-box">
-            <p className="xs">
-              <strong>{datos.origen}</strong>
-            </p>
-            <ul className="consulta-list">
-              {datos.resumen.map((r, i) => (
-                <li key={i}>{r}</li>
-              ))}
-            </ul>
-            {datos.avisos.length > 0 && (
-              <div className="day-notice" style={{ marginTop: "0.5rem", display: "block" }}>
-                {datos.avisos.map((a, i) => (
-                  <p key={i} className="xs">
-                    {a}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Field label="Cómo cargarlo">
-            <select className="select" value={modo} onChange={(ev) => setModo(ev.target.value as any)}>
-              <option value="fusionar">Fusionar: añade y actualiza, conserva lo que ya hay</option>
-              <option value="reemplazar">Reemplazar: borra todo y deja solo lo del Excel</option>
-            </select>
-          </Field>
-
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <button className="btn" onClick={onClose}>
-              Cancelar
-            </button>
-            <button className="btn btn-primary" onClick={ejecutar} disabled={leyendo}>
-              {leyendo ? "Importando…" : "Importar"}
-            </button>
-          </div>
-        </>
-      )}
-
-      {hecho && (
-        <>
-          <p className="xs">{hecho}</p>
-          <button className="btn btn-primary" onClick={onClose}>
-            Cerrar
-          </button>
-        </>
-      )}
-    </Modal>
+    </>
   );
 }
 
@@ -307,7 +274,6 @@ function Header() {
   const { state, reset, replaceState } = usePlanner();
   const fileRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
 
   const backup = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -345,9 +311,7 @@ function Header() {
               <p className="l">{s.label}</p>
             </div>
           ))}
-          <button className="btn" onClick={() => setImporting(true)} title="Primera carga desde el Excel">
-            <FileUp /> Cargar Excel
-          </button>
+          <UpdateButton />
           <button className="btn btn-primary" onClick={() => setExporting(true)}>
             <FileSpreadsheet /> Exportar a Excel
           </button>
@@ -383,7 +347,6 @@ function Header() {
         </div>
       </div>
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}
-      {importing && <ImportDialog onClose={() => setImporting(false)} />}
     </header>
   );
 }
