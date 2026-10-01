@@ -18,10 +18,16 @@ export interface Work {
   active: boolean;
 }
 
+export type Company = "CRIMASA" | "MAC";
+
+export const COMPANIES: Company[] = ["CRIMASA", "MAC"];
+
 export interface Employee {
   id: string;
   name: string;
   category: string;
+  /** Empresa: la rellena el script desde las hojas Personal_C / Personal_M. */
+  company?: Company;
   active: boolean;
 }
 
