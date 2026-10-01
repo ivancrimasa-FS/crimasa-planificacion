@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { Camera, CalendarOff, Plus, Trash2 } from "lucide-react";
 import { todayISO, usePlanner } from "../store";
 import { ABSENCE_COLORS, ABSENCE_TYPES, COMPANIES } from "../types";
@@ -79,7 +79,7 @@ export function EmployeesTab() {
   const bajas = state.employees.filter((e) => !e.active).length;
   const empresaDe = (e: { company?: Company }): Company => e.company || "CRIMASA";
 
-  // Siempre por orden alfabético, entren cuando entren.
+  // Primero toda la gente de CRIMASA y luego la de MAC, cada grupo por orden alfabético.
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
     return state.employees
@@ -87,7 +87,11 @@ export function EmployeesTab() {
       .filter((e) => !empresa || empresaDe(e) === empresa)
       .filter((e) => !q || e.name.toLowerCase().includes(q))
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+      .sort(
+        (a, b) =>
+          COMPANIES.indexOf(empresaDe(a)) - COMPANIES.indexOf(empresaDe(b)) ||
+          a.name.localeCompare(b.name, "es", { sensitivity: "base" }),
+      );
   }, [state.employees, search, verBajas, empresa]);
 
   const cuenta = (c: Company) => state.employees.filter((e) => e.active && empresaDe(e) === c).length;
@@ -203,8 +207,26 @@ export function EmployeesTab() {
             </tr>
           </thead>
           <tbody>
-            {list.map((e) => (
-              <tr key={e.id}>
+            {list.map((e, i) => (
+              <Fragment key={e.id}>
+              {(i === 0 || empresaDe(list[i - 1]) !== empresaDe(e)) && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      paddingTop: i === 0 ? "0.3rem" : "1.1rem",
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      color: "var(--muted-foreground)",
+                      borderBottom: "2px solid var(--gold)",
+                    }}
+                  >
+                    {empresaDe(e)} · {list.filter((x) => empresaDe(x) === empresaDe(e)).length}
+                  </td>
+                </tr>
+              )}
+              <tr>
                 <td>
                   <FotoEmpleado id={e.id} nombre={e.name} categoria={e.category} />
                 </td>
@@ -266,6 +288,7 @@ export function EmployeesTab() {
                   </button>
                 </td>
               </tr>
+              </Fragment>
             ))}
             {list.length === 0 && (
               <tr>
