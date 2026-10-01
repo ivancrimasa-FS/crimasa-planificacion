@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { Camera, CalendarOff, Plus, Trash2 } from "lucide-react";
 import { todayISO, usePlanner } from "../store";
-import { ABSENCE_COLORS, ABSENCE_TYPES } from "../types";
-import type { AbsenceType } from "../types";
+import { ABSENCE_COLORS, ABSENCE_TYPES, COMPANIES } from "../types";
+import type { AbsenceType, Company } from "../types";
 import { PawnFigure } from "./Pawn";
 
 /** Recorta la foto a un cuadrado de 200px y la comprime, para no cargar la base de datos. */
@@ -74,15 +74,23 @@ export function EmployeesTab() {
   const [bulk, setBulk] = useState("");
   const [search, setSearch] = useState("");
   const [verBajas, setVerBajas] = useState(false);
+  const [empresa, setEmpresa] = useState<"" | Company>("");
 
   const bajas = state.employees.filter((e) => !e.active).length;
+  const empresaDe = (e: { company?: Company }): Company => e.company || "CRIMASA";
 
+  // Siempre por orden alfabético, entren cuando entren.
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
     return state.employees
       .filter((e) => verBajas || e.active)
-      .filter((e) => !q || e.name.toLowerCase().includes(q));
-  }, [state.employees, search, verBajas]);
+      .filter((e) => !empresa || empresaDe(e) === empresa)
+      .filter((e) => !q || e.name.toLowerCase().includes(q))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+  }, [state.employees, search, verBajas, empresa]);
+
+  const cuenta = (c: Company) => state.employees.filter((e) => e.active && empresaDe(e) === c).length;
 
   const addBulk = () => {
     const lines = bulk
@@ -167,10 +175,22 @@ export function EmployeesTab() {
       <AbsencesPanel />
 
       <div className="card-surface p-5">
-        <label className="row xs muted" style={{ gap: "0.35rem", marginBottom: "0.5rem" }}>
-          <input type="checkbox" checked={verBajas} onChange={(ev) => setVerBajas(ev.target.checked)} />
-          Ver también las bajas ({bajas})
-        </label>
+        <div className="row" style={{ marginBottom: "0.5rem", gap: "1rem" }}>
+          <div className="seg">
+            <button className="seg-btn" data-active={empresa === "" ? "true" : "false"} onClick={() => setEmpresa("")}>
+              Todas
+            </button>
+            {COMPANIES.map((c) => (
+              <button key={c} className="seg-btn" data-active={empresa === c ? "true" : "false"} onClick={() => setEmpresa(c)}>
+                {c} <span className="seg-count">{cuenta(c)}</span>
+              </button>
+            ))}
+          </div>
+          <label className="row xs muted" style={{ gap: "0.35rem" }}>
+            <input type="checkbox" checked={verBajas} onChange={(ev) => setVerBajas(ev.target.checked)} />
+            Ver también las bajas ({bajas})
+          </label>
+        </div>
         <table className="table">
           <thead>
             <tr>
@@ -178,6 +198,7 @@ export function EmployeesTab() {
               <th>Trabajador</th>
               <th style={{ width: "11rem" }}>Categoría</th>
               <th style={{ width: "7rem" }}>Estado</th>
+              <th style={{ width: "8rem" }}>Empresa</th>
               <th style={{ width: "3rem" }} />
             </tr>
           </thead>
@@ -209,6 +230,20 @@ export function EmployeesTab() {
                   </button>
                 </td>
                 <td>
+                  <select
+                    className="select"
+                    value={empresaDe(e)}
+                    onChange={(ev) => updateEmployee(e.id, { company: ev.target.value as Company })}
+                    title="Se rellena sola desde el Excel de la base de datos"
+                  >
+                    {COMPANIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
                   <button
                     className="btn btn-icon btn-danger"
                     title="Eliminar trabajador"
@@ -234,7 +269,7 @@ export function EmployeesTab() {
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={5} className="muted xs">
+                <td colSpan={6} className="muted xs">
                   No hay trabajadores con ese filtro.
                 </td>
               </tr>
@@ -288,6 +323,8 @@ function AbsencesPanel() {
           <option value="">Elige trabajador…</option>
           {state.employees
             .filter((e) => e.active)
+            .slice()
+            .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }))
             .map((e) => (
               <option key={e.id} value={e.id}>
                 {e.name}
