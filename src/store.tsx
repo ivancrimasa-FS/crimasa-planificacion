@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   collection,
@@ -18,6 +18,7 @@ import {
   COL_DIAS,
   COL_FOTOS,
   DOC_CATALOGO,
+  DOC_PREVISION,
   DOC_SINCRONIZAR,
   db,
   firebaseReady,
@@ -411,6 +412,24 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     [write],
   );
 
+  /**
+   * Avisa al servidor de que la previsión ha cambiado. El vigilante espera a que
+   * pasen 15 minutos sin más cambios y publica el informe en Teams.
+   * Como mucho una escritura por minuto: rellenar una semana son decenas de casillas.
+   */
+  const ultimaMarca = useRef(0);
+  const marcarPrevision = useCallback(() => {
+    if (!db) return;
+    const ahora = Date.now();
+    if (ahora - ultimaMarca.current < 60000) return;
+    ultimaMarca.current = ahora;
+    setDoc(
+      doc(db, COL_COMANDOS, DOC_PREVISION),
+      { cambiadoEn: new Date().toISOString(), cambiadoPor: email || "desconocido" },
+      { merge: true },
+    ).catch((err) => console.error("No se pudo marcar el cambio de previsión:", err));
+  }, [email]);
+
   const saveDay = useCallback(
     (iso: string, patch: any) => {
       if (!db) return;
@@ -512,6 +531,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         const needs: Record<string, any> = {};
         needs[workId] = forWork;
         saveDay(iso || date, { needs });
+        marcarPrevision();
       },
 
       assignEmployee: (workId, employeeId) => {
@@ -623,12 +643,14 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         }
         if (!db) return;
         write(() => setDoc(doc(db, COL_DIAS, date), JSON.parse(JSON.stringify(prev))));
+        marcarPrevision();
       },
 
       clearDay: () => {
         if (!db) return;
         if (!window.confirm("¿Vaciar toda la planificación del " + date + "?")) return;
         write(() => deleteDoc(doc(db, COL_DIAS, date)));
+        marcarPrevision();
       },
 
       addManager: (name) => {
@@ -919,7 +941,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         return Object.values(d.needs[workId] || {}).reduce((a, b) => a + (Number(b) || 0), 0);
       },
     };
-  }, [state, catalog, days, date, rangeMode, incluirFinde, day, dayOf, status, lastError, photos, comando, saveCatalog, saveDay, saveDays, purgeFromDays, write]);
+  }, [state, catalog, days, date, rangeMode, incluirFinde, day, dayOf, status, lastError, photos, comando, marcarPrevision, saveCatalog, saveDay, saveDays, purgeFromDays, write]);
 
   if (!firebaseReady) return <ConfigMissing />;
 

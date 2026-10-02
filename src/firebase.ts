@@ -46,3 +46,5 @@ export const COL_FOTOS = "plan_fotos";
 /** Órdenes que deja la web y recoge el vigilante del servidor. */
 export const COL_COMANDOS = "plan_comandos";
 export const DOC_SINCRONIZAR = "sincronizar";
+/** Marca de "la previsión ha cambiado", para publicar el informe en Teams. */
+export const DOC_PREVISION = "prevision";
