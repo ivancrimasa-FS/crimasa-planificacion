@@ -100,19 +100,30 @@ export function YearCalendarTab() {
     return out;
   }, [state.days, year, workId, source, obrasActivas]);
 
-  /** Previsión total del día (todas las obras), que es lo que se compara con la plantilla. */
-  const previstasTotales = useMemo(() => {
+  /**
+   * Previsión del día que se compara con la plantilla. Las subcontratas van
+   * aparte: no salen de la plantilla, así que no cuentan como gente que falta.
+   * Es el mismo criterio que el informe que se publica en Teams.
+   */
+  const { previstasTotales, subcontratasDia } = useMemo(() => {
     const out: Record<string, number> = {};
+    const sub: Record<string, number> = {};
+    const esSubcontrata = (cat: string) => cat.toLowerCase().includes("subcontrata");
     for (const [iso, d] of Object.entries(state.days)) {
       if (!iso.startsWith(String(year))) continue;
       let n = 0;
+      let k = 0;
       for (const [wid, byCat] of Object.entries(d.needs || {})) {
         if (!obrasActivas.has(wid)) continue;
-        n += Object.values(byCat).reduce((a, b) => a + (Number(b) || 0), 0);
+        for (const [cat, v] of Object.entries(byCat)) {
+          if (esSubcontrata(cat)) k += Number(v) || 0;
+          else n += Number(v) || 0;
+        }
       }
       out[iso] = n;
+      if (k) sub[iso] = k;
     }
-    return out;
+    return { previstasTotales: out, subcontratasDia: sub };
   }, [state.days, year, obrasActivas]);
 
   const festivos = useMemo(() => ({ ...festivosDe(year), ...state.festivosLocales }), [year, state.festivosLocales]);
@@ -357,6 +368,9 @@ export function YearCalendarTab() {
                       Previstas {prev} · Disponibles {disp} ·{" "}
                       {prev > disp ? <strong style={{ color: "var(--destructive)" }}>faltan {prev - disp}</strong> : "cubierto"}
                     </p>
+                    {subcontratasDia[consultaDia] > 0 && (
+                      <p className="xs muted">Además, {subcontratasDia[consultaDia]} subcontratas previstas</p>
+                    )}
                     <ul className="consulta-list">
                       {filas.map((f) => (
                         <li key={f.code}>
@@ -432,6 +446,11 @@ export function YearCalendarTab() {
                   <strong style={{ color: "var(--ok)" }}>sobran {-faltan}</strong>
                 )}
               </p>
+              {subcontratasDia[hover.iso] > 0 && (
+                <p className="xs muted" style={{ marginTop: "-0.2rem", marginBottom: "0.35rem" }}>
+                  Además, {subcontratasDia[hover.iso]} subcontratas previstas (no cuentan como plantilla)
+                </p>
+              )}
               <ul>
                 {filas.slice(0, 6).map((f) => (
                   <li key={f.code}>
